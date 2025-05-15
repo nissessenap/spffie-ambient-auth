@@ -40,10 +40,13 @@ istioctl install --set profile=ambient -y
 kubectl get pods -n istio-system
 cd ..
 
-# 4. Deploy an OIDC Provider (Keycloak)
-echo "Deploying Keycloak..."
-helm repo add codecentric https://codecentric.github.io/helm-charts
-helm install keycloak codecentric/keycloak --namespace keycloak --create-namespace
+# 4. Deploy an OIDC Provider (Authentik)
+echo "Deploying Authentik..."
+helm repo add authentik https://charts.goauthentik.io/
+helm repo update
+helm install authentik authentik/authentik --namespace authentik --create-namespace
+
+# Note: After deployment, access Authentik's admin interface to configure realms, clients, and users.
 
 # 5. Deploy SpiceDB
 echo "Deploying SpiceDB..."
@@ -55,5 +58,5 @@ echo "To clean up, run the following commands:"
 echo "kind delete cluster"
 echo "helm uninstall spire-server -n spire"
 echo "helm uninstall spire-agent -n spire"
-echo "helm uninstall keycloak -n keycloak"
+echo "helm uninstall authentik -n authentik"
 echo "helm uninstall spicedb -n spicedb"

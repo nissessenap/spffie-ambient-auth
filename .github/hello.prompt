@@ -1,7 +1,7 @@
 I’m designing a secure microservice architecture for Kubernetes using:
 
 - SPIRE (SPIFFE) for service identity and mTLS
-- OAuth2/OIDC (e.g., Keycloak or Authentik) for user authentication
+- OAuth2/OIDC (Authentik) for user authentication
 - SpiceDB for centralized, unified authorization for both users and services
 - Istio Ambient Mode for zero-trust networking and traffic management without sidecars
 
