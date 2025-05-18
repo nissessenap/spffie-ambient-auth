@@ -5,7 +5,7 @@ set -euo pipefail
 # Prerequisites: kind, kubectl, helm, docker
 
 CLUSTER_NAME="spffie-demo"
-SPIRE_NS="spire"
+SPIRE_NS="spire-server"
 AUTHENTIK_NS="authentik"
 SPICEDB_NS="spicedb"
 
@@ -32,7 +32,6 @@ fi
 kubectl cluster-info --context kind-$CLUSTER_NAME
 
 # 2. Create namespaces
-kubectl create namespace "$SPIRE_NS" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace "$AUTHENTIK_NS" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace "$SPICEDB_NS" --dry-run=client -o yaml | kubectl apply -f -
 
@@ -41,8 +40,9 @@ if ! helm repo list | grep -q "spiffe-hardened"; then
   helm repo add spiffe-hardened https://spiffe.github.io/helm-charts-hardened/
   helm repo update
 fi
-helm upgrade --install spire spiffe-hardened/spire -n "$SPIRE_NS" --create-namespace 
-
+# Install CRDs first (required by spiffe-hardened chart)
+helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spiffe.github.io/helm-charts-hardened/ --create-namespace
+helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/
 # # 4. Install Authentik (OIDC provider)
 # if ! helm repo list | grep -q "authentik"; then
 #   helm repo add authentik https://charts.goauthentik.io/
