@@ -1,38 +1,37 @@
-I’m designing a secure microservice architecture for Kubernetes using:
+I’m designing a secure microservice architecture in Kubernetes
 
-- SPIRE (SPIFFE) for service identity and mTLS
-- OAuth2/OIDC (Authentik) for user authentication
-- SpiceDB for centralized, unified authorization for both users and services
-- Istio Ambient Mode for zero-trust networking and traffic management without sidecars
+I want to use:
 
-## My goals are:
+- SPIRE for service-to-service authentication and issuing SPIFFE IDs
+- OAuth2/OIDC (Authentik) for external user authentication
+- SpiceDB as the central, unified authorization engine for both services and users
 
-- Zero shared secrets for service-to-service authentication (use SPIRE)
-- No sidecars — Istio Ambient Mode should provide network-level identity and policy enforcement
-- Unified authorization across user and service identity using SpiceDB
-- External frontend lives outside the mesh and authenticates users via OIDC
-- API Gateway (Envoy, Istio Ingress, or similar) verifies tokens and SPIFFE IDs
-- SpiceDB is queried for fine-grained access control using service/user identity
-- Workload identity from SPIRE should be available inside Istio Ambient mesh
+🔧 Requirements for the PoC:
 
-Can you create a PoC project that includes:
+Minimal Kubernetes setup (Kind)
 
-- Minimal Kubernetes setup (Kind)
-- SPIRE deployed and integrated with Istio Ambient for issuing SPIFFE IDs
-- An OIDC provider (e.g., Keycloak or Authentik) issuing access tokens
-- Istio Ambient Mode deployed and configured (ztunnel + secure overlay)
-- SpiceDB with schema defining users, services, resources, and permissions
+- SPIRE installed, issuing SPIFFE IDs to services using Kubernetes workload attestation
+- OIDC provider (Authentik) for authenticating external users and issuing JWTs
+- SpiceDB with a schema that:
+    - Defines resource ownership by users
+    - Allows certain services (identified by SPIFFE ID) to act on behalf of users or themselves
 
-A demo application stack showing:
-- A minimal user-authenticated frontend route
-- A service-to-service call authenticated with SPIFFE ID wirtten in golang
-- Authorization logic enforced centrally via SpiceDB queries
+- Two services:
+    - Service A: user-facing API, receives a JWT from the frontend
+    - Service B: internal service, called by Service A using mTLS and SPIFFE identity
 
-Example manifests, Dockerfiles, SpiceDB schema, and demo data
+- An API Gateway or lightweight reverse proxy (optional) that:
+    - Validates OIDC tokens
+    - Passes identity to the backend
+- SpiceDB queries made in both services to authorize:
+    - User-to-resource access
+    - Service-to-service calls
+- Clear explanation of how mTLS and SPIFFE are established with SPIRE (e.g., via SDS, or manually loaded certs)
+- Dockerfiles, manifests, sample schema, and request examples to show end-to-end flow
 
-The final result should show:
-
-- User login via OIDC, token passed to API Gateway
-- Gateway verifies user and SPIFFE identity
-- Call allowed only if both user and service have required relationship in SpiceDB
+🎯 Goals:
+- Zero shared secrets
+- SPIRE manages all service identities
+- OIDC for users, integrated at the edge or API layer
+- SpiceDB as the unified decision point for all access control
 
