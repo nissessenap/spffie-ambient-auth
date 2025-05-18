@@ -41,34 +41,34 @@ if ! helm repo list | grep -q "spiffe-hardened"; then
   helm repo add spiffe-hardened https://spiffe.github.io/helm-charts-hardened/
   helm repo update
 fi
-helm upgrade --install spire spiffe-hardened/spire -n "$SPIRE_NS" --create-namespace \
+helm upgrade --install spire spiffe-hardened/spire -n "$SPIRE_NS" --create-namespace 
 
-# 4. Install Authentik (OIDC provider)
-if ! helm repo list | grep -q "authentik"; then
-  helm repo add authentik https://charts.goauthentik.io/
-  helm repo update
-fi
-helm upgrade --install authentik authentik/authentik -n "$AUTHENTIK_NS" --create-namespace \
-  --set postgresql.enabled=true \
-  --set redis.enabled=true \
-  --set ingress.enabled=false
+# # 4. Install Authentik (OIDC provider)
+# if ! helm repo list | grep -q "authentik"; then
+#   helm repo add authentik https://charts.goauthentik.io/
+#   helm repo update
+# fi
+# helm upgrade --install authentik authentik/authentik -n "$AUTHENTIK_NS" --create-namespace \
+#   --set postgresql.enabled=true \
+#   --set redis.enabled=true \
+#   --set ingress.enabled=false
 
-# 5. Install SpiceDB (authorization)
-if ! helm repo list | grep -q "authzed"; then
-  helm repo add authzed https://authzed.github.io/charts
-  helm repo update
-fi
-helm upgrade --install spicedb authzed/spicedb -n "$SPICEDB_NS" --create-namespace \
-  --set replicaCount=1 \
-  --set datastore.engine=memory
+# # 5. Install SpiceDB (authorization)
+# if ! helm repo list | grep -q "authzed"; then
+#   helm repo add authzed https://authzed.github.io/charts
+#   helm repo update
+# fi
+# helm upgrade --install spicedb authzed/spicedb -n "$SPICEDB_NS" --create-namespace \
+#   --set replicaCount=1 \
+#   --set datastore.engine=memory
 
-# 6. Wait for pods to be ready
-kubectl wait --for=condition=Ready pods --all -n "$SPIRE_NS" --timeout=180s
-kubectl wait --for=condition=Ready pods --all -n "$AUTHENTIK_NS" --timeout=180s
-kubectl wait --for=condition=Ready pods --all -n "$SPICEDB_NS" --timeout=180s
+# # 6. Wait for pods to be ready
+# kubectl wait --for=condition=Ready pods --all -n "$SPIRE_NS" --timeout=180s
+# kubectl wait --for=condition=Ready pods --all -n "$AUTHENTIK_NS" --timeout=180s
+# kubectl wait --for=condition=Ready pods --all -n "$SPICEDB_NS" --timeout=180s
 
-echo "[+] All infrastructure components are deployed!"
-echo "- SPIRE (SPIFFE) in namespace: $SPIRE_NS"
-echo "- Authentik (OIDC) in namespace: $AUTHENTIK_NS"
-echo "- SpiceDB in namespace: $SPICEDB_NS"
-echo "[!] You may want to port-forward or expose services for local access."
+# echo "[+] All infrastructure components are deployed!"
+# echo "- SPIRE (SPIFFE) in namespace: $SPIRE_NS"
+# echo "- Authentik (OIDC) in namespace: $AUTHENTIK_NS"
+# echo "- SpiceDB in namespace: $SPICEDB_NS"
+# echo "[!] You may want to port-forward or expose services for local access."
