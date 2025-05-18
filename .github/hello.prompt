@@ -1,37 +1,21 @@
-I’m designing a secure microservice architecture in Kubernetes
+I’m designing a microservice-based architecture using Kubernetes,
+with secure service-to-service communication and support for external user authentication.
 
-I want to use:
+The system should use:
 
-- SPIRE for service-to-service authentication and issuing SPIFFE IDs
-- OAuth2/OIDC (Authentik) for external user authentication
-- SpiceDB as the central, unified authorization engine for both services and users
+- SPIFFE/SPIRE for workload identity (mTLS between services)
+- OIDC (OpenID Connect) for authenticating external users
+- SpiceDB for fine-grained authorization (ACLs / relationships)
+- Authentication and token validation inside each app
+- No Envoy sidecars or Istio (ambient mode or otherwise)
 
-🔧 Requirements for the PoC:
+I want a PoC that:
 
-Minimal Kubernetes setup (Kind)
-
-- SPIRE installed, issuing SPIFFE IDs to services using Kubernetes workload attestation
-- OIDC provider (Authentik) for authenticating external users and issuing JWTs
-- SpiceDB with a schema that:
-    - Defines resource ownership by users
-    - Allows certain services (identified by SPIFFE ID) to act on behalf of users or themselves
-
-- Two services:
-    - Service A: user-facing API, receives a JWT from the frontend
-    - Service B: internal service, called by Service A using mTLS and SPIFFE identity
-
-- An API Gateway or lightweight reverse proxy (optional) that:
-    - Validates OIDC tokens
-    - Passes identity to the backend
-- SpiceDB queries made in both services to authorize:
-    - User-to-resource access
-    - Service-to-service calls
-- Clear explanation of how mTLS and SPIFFE are established with SPIRE (e.g., via SDS, or manually loaded certs)
-- Dockerfiles, manifests, sample schema, and request examples to show end-to-end flow
-
-🎯 Goals:
-- Zero shared secrets
-- SPIRE manages all service identities
-- OIDC for users, integrated at the edge or API layer
-- SpiceDB as the unified decision point for all access control
+- Deploys multiple services to Kubernetes
+- Uses SPIRE to assign identities (SVIDs) to services via mTLS
+- Uses Authentik as OIDC provider for user login
+- Forwards bearer tokens (JWTs) from clients to services
+- Validates the token inside each app
+- Extracts user identity from the token and queries SpiceDB to authorize actions
+ Keeps infrastructure minimal and developer-friendly (easy to run locally or with kind)
 
