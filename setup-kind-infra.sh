@@ -36,14 +36,12 @@ kubectl create namespace "$SPIRE_NS" --dry-run=client -o yaml | kubectl apply -f
 kubectl create namespace "$AUTHENTIK_NS" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace "$SPICEDB_NS" --dry-run=client -o yaml | kubectl apply -f -
 
-# 3. Install SPIRE (SPIFFE)
-if ! helm repo list | grep -q "spiffe"; then
-  helm repo add spiffe https://spiffe.github.io/helm-charts/
+# 3. Install SPIRE (SPIFFE) using hardened charts
+if ! helm repo list | grep -q "spiffe-hardened"; then
+  helm repo add spiffe-hardened https://spiffe.github.io/helm-charts-hardened/
   helm repo update
 fi
-helm upgrade --install spire spiffe/spire -n "$SPIRE_NS" --create-namespace \
-  --set server.replicaCount=1 \
-  --set agent.replicaCount=1
+helm upgrade --install spire spiffe-hardened/spire -n "$SPIRE_NS" --create-namespace \
 
 # 4. Install Authentik (OIDC provider)
 if ! helm repo list | grep -q "authentik"; then
