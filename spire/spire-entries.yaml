@@ -2,8 +2,9 @@ apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterSPIFFEID
 metadata:
   name: service-a
+  namespace: app
 spec:
-  spiffeID: spiffe://example.org/ns/app/sa/service-a
+  spiffeIDTemplate: spiffe://example.org/ns/app/sa/service-a
   podSelector:
     matchExpressions:
       - key: app
@@ -23,8 +24,9 @@ apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterSPIFFEID
 metadata:
   name: service-b
+  namespace: app
 spec:
-  spiffeID: spiffe://example.org/ns/app/sa/service-b
+  spiffeIDTemplate: spiffe://example.org/ns/app/sa/service-b
   podSelector:
     matchExpressions:
       - key: app
