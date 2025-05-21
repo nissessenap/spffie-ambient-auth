@@ -1,3 +1,9 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: service-a
+  namespace: app
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -13,6 +19,7 @@ spec:
       labels:
         app: service-a
     spec:
+      serviceAccountName: service-a
       containers:
         - name: service-a
           image: service-a:latest

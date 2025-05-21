@@ -1,0 +1,25 @@
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: service-a
+spec:
+  spiffeID: spiffe://example.org/ns/app/sa/service-a
+  podSelector:
+    matchLabels:
+      app: service-a
+  namespaceSelector:
+    matchNames:
+      - app
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: service-b
+spec:
+  spiffeID: spiffe://example.org/ns/app/sa/service-b
+  podSelector:
+    matchLabels:
+      app: service-b
+  namespaceSelector:
+    matchNames:
+      - app
