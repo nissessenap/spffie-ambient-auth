@@ -26,6 +26,7 @@ spec:
           imagePullPolicy: Never
           ports:
             - containerPort: 8080
+            - containerPort: 8081
           volumeMounts:
             - name: spire-agent-socket
               mountPath: /run/spire/agent-sockets
@@ -47,6 +48,11 @@ spec:
   selector:
     app: service-a
   ports:
-    - protocol: TCP
+    - name: mtls
+      protocol: TCP
       port: 8080
       targetPort: 8080
+    - name: plain
+      protocol: TCP
+      port: 8081
+      targetPort: 8081

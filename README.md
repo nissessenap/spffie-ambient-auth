@@ -30,3 +30,12 @@ Look in the logs for more info
 ```shell
 k logs spire-server-0 spire-controller-manager |grep app/sa
 ```
+
+## Verify service-a -> b
+
+Exec into `service-a` and use `http` endpoint for easy testing
+
+```shell
+wget --no-check-certificate http://service-a:8081/hello -O -
+wget --no-check-certificate http://service-a:8081/call-b -O -
+```

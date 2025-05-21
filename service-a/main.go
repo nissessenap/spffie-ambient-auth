@@ -85,8 +85,17 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
-	log.Println("[startup] service-a mTLS server listening on :8080")
-	if err := server.ListenAndServeTLS("", ""); err != nil {
-		log.Fatalf("[fatal] ListenAndServeTLS failed: %v", err)
+	// Start mTLS server
+	go func() {
+		log.Println("[startup] service-a mTLS server listening on :8080")
+		if err := server.ListenAndServeTLS("", ""); err != nil {
+			log.Fatalf("[fatal] ListenAndServeTLS failed: %v", err)
+		}
+	}()
+
+	// Start plain HTTP server for testing (no mTLS)
+	log.Println("[startup] service-a plain HTTP server listening on :8081 (no mTLS, for testing only!)")
+	if err := http.ListenAndServe(":8081", mux); err != nil {
+		log.Fatalf("[fatal] Plain HTTP server failed: %v", err)
 	}
 }
