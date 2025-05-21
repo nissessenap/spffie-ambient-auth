@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -51,12 +52,25 @@ func callServiceBHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	ctx := context.Background()
 
+	log.Println("[startup] Starting service-a...")
+	socket := os.Getenv("SPIFFE_ENDPOINT_SOCKET")
+	if socket == "" {
+		socket = "unix:///run/spire/sockets/agent.sock"
+	}
+	log.Printf("[startup] Using SPIFFE_ENDPOINT_SOCKET=%s", socket)
+
 	// Connect to the SPIRE Workload API
 	source, err := workloadapi.NewX509Source(ctx)
 	if err != nil {
-		log.Fatalf("Unable to create X509Source: %v", err)
+		log.Fatalf("[fatal] Unable to create X509Source: %v", err)
 	}
 	defer source.Close()
+
+	svid, err := source.GetX509SVID()
+	if err != nil {
+		log.Fatalf("[fatal] Unable to fetch X509SVID: %v", err)
+	}
+	log.Printf("[startup] Got SVID: %s", svid.ID)
 
 	// Require mTLS and verify client has a SPIFFE ID
 	tlsConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
@@ -71,6 +85,8 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
-	log.Println("service-a mTLS server listening on :8080")
-	log.Fatal(server.ListenAndServeTLS("", "")) // certs are provided by SPIRE
+	log.Println("[startup] service-a mTLS server listening on :8080")
+	if err := server.ListenAndServeTLS("", ""); err != nil {
+		log.Fatalf("[fatal] ListenAndServeTLS failed: %v", err)
+	}
 }
