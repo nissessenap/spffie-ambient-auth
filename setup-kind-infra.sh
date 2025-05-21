@@ -44,32 +44,34 @@ fi
 # Install CRDs first (required by spiffe-hardened chart)
 helm upgrade --install -n spire-server spire-crds spire-crds --repo https://spiffe.github.io/helm-charts-hardened/ --create-namespace
 helm upgrade --install -n spire-server spire spire --repo https://spiffe.github.io/helm-charts-hardened/
-# # 4. Install Authentik (OIDC provider)
-# if ! helm repo list | grep -q "authentik"; then
-#   helm repo add authentik https://charts.goauthentik.io/
-#   helm repo update
-# fi
-# helm upgrade --install authentik authentik/authentik -n "$AUTHENTIK_NS" --create-namespace \
-#   --set postgresql.enabled=true \
-#   --set redis.enabled=true \
-#   --set ingress.enabled=false
 
-# # 5. Install SpiceDB (authorization)
-# if ! helm repo list | grep -q "authzed"; then
-#   helm repo add authzed https://authzed.github.io/charts
-#   helm repo update
-# fi
-# helm upgrade --install spicedb authzed/spicedb -n "$SPICEDB_NS" --create-namespace \
-#   --set replicaCount=1 \
-#   --set datastore.engine=memory
+#  4. Install Authentik (OIDC provider)
+if ! helm repo list | grep -q "authentik"; then
+  helm repo add authentik https://charts.goauthentik.io/
+  helm repo update
+fi
+helm upgrade --install authentik authentik/authentik -n "$AUTHENTIK_NS" --create-namespace  -f authentik-values.yaml
 
-# # 6. Wait for pods to be ready
-# kubectl wait --for=condition=Ready pods --all -n "$SPIRE_NS" --timeout=180s
-# kubectl wait --for=condition=Ready pods --all -n "$AUTHENTIK_NS" --timeout=180s
-# kubectl wait --for=condition=Ready pods --all -n "$SPICEDB_NS" --timeout=180s
+# 5. Install SpiceDB (authorization)
+if ! helm repo list | grep -q "authzed"; then
+  helm repo add authzed https://authzed.github.io/charts
+  helm repo update
+fi
+helm upgrade --install spicedb authzed/spicedb -n "$SPICEDB_NS" --create-namespace \
+  --set replicaCount=1 \
+  --set datastore.engine=memory
 
-# echo "[+] All infrastructure components are deployed!"
-# echo "- SPIRE (SPIFFE) in namespace: $SPIRE_NS"
-# echo "- Authentik (OIDC) in namespace: $AUTHENTIK_NS"
-# echo "- SpiceDB in namespace: $SPICEDB_NS"
-# echo "[!] You may want to port-forward or expose services for local access."
+# 6. Wait for pods to be ready
+kubectl wait --for=condition=Ready pods --all -n "$SPIRE_NS" --timeout=180s
+kubectl wait --for=condition=Ready pods --all -n "$AUTHENTIK_NS" --timeout=180s
+kubectl wait --for=condition=Ready pods --all -n "$SPICEDB_NS" --timeout=180s
+
+# 7. Port-forward services for local access
+echo "[+] Port-forwarding Authentik..."
+kubectl port-forward -n "$AUTHENTIK_NS" svc/authentik 9000:9000 &
+echo "[+] Port-forwarding SpiceDB..."
+kubectl port-forward -n "$SPICEDB_NS" svc/spicedb 50051:50051 &
+echo "[+] Port-forwarding SpiceDB Console..."
+kubectl port-forward -n "$SPICEDB_NS" svc/spicedb-console 8080:8080 &
+echo "[+] Port-forwarding SpiceDB UI..."
+kubectl port-forward -n "$SPICEDB_NS" svc/spicedb-ui 8081:8081 &
