@@ -53,13 +53,38 @@ fi
 helm upgrade --install authentik authentik/authentik -n "$AUTHENTIK_NS" --create-namespace  -f authentik-values.yaml
 
 # 5. Install SpiceDB (authorization)
-if ! helm repo list | grep -q "authzed"; then
-  helm repo add authzed https://authzed.github.io/charts
-  helm repo update
-fi
-helm upgrade --install spicedb authzed/spicedb -n "$SPICEDB_NS" --create-namespace \
-  --set replicaCount=1 \
-  --set datastore.engine=memory
+# if ! helm repo list | grep -q "authzed"; then
+#   helm repo add authzed https://authzed.github.io/charts
+#   helm repo update
+# fi
+# helm upgrade --install spicedb authzed/spicedb -n "$SPICEDB_NS" --create-namespace \
+#   --set replicaCount=1 \
+#   --set datastore.engine=memory
+
+# https://authzed.com/docs/spicedb/getting-started/install/kubernetes
+kubectl apply --server-side -f https://github.com/authzed/spicedb-operator/releases/latest/download/bundle.yaml
+
+kubectl apply --server-side -f - <<EOF
+apiVersion: authzed.com/v1alpha1
+kind: SpiceDBCluster
+metadata:
+  name: dev
+  namespace: $SPICEDB_NS
+spec:
+  config:
+    datastoreEngine: memory
+  secretName: dev-spicedb-config
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-spicedb-config
+  namespace: $SPICEDB_NS
+stringData:
+  preshared_key: "averysecretpresharedkey" 
+EOF
+
+
 
 # 6. Wait for pods to be ready
 kubectl wait --for=condition=Ready pods --all -n "$SPIRE_NS" --timeout=180s
