@@ -35,6 +35,7 @@ kubectl cluster-info --context kind-$CLUSTER_NAME
 # 2. Create namespaces
 kubectl create namespace "$AUTHENTIK_NS" --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace "$SPICEDB_NS" --dry-run=client -o yaml | kubectl apply -f -
+kubectl create ns app
 
 # 3. Install SPIRE (SPIFFE) using hardened charts
 if ! helm repo list | grep -q "spiffe-hardened"; then
