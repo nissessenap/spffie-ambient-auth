@@ -15,6 +15,7 @@ spec:
       containers:
         - name: service-a
           image: service-a:latest
+          imagePullPolicy: Never
           ports:
             - containerPort: 8080
 ---
