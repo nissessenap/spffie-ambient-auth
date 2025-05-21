@@ -26,6 +26,14 @@ spec:
           imagePullPolicy: Never
           ports:
             - containerPort: 8080
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service
