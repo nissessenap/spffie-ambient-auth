@@ -1,4 +1,8 @@
 authentik:
+    error_reporting:
+        enabled: false
+    disable_update_check: true
+    disable_startup_analytics: true
     secret_key: "PleaseGenerateASecureKey"
     # This sends anonymous usage-data, stack traces on errors and
     # performance data to sentry.io, and is fully opt-in
@@ -6,6 +10,10 @@ authentik:
         enabled: true
     postgresql:
         password: "ThisIsNotASecurePassword"
+    # In the Helm values, set the akadmin user password and token:
+    bootstrap_token: test
+    bootstrap_password: test
+
 
 server:
     ingress:
