@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -25,6 +26,28 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func callServiceBHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	source, err := workloadapi.NewX509Source(ctx)
+	if err != nil {
+		http.Error(w, "Failed to create X509Source: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer source.Close()
+
+	tlsConfig := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
+	resp, err := client.Get("https://service-b:8080/hello")
+	if err != nil {
+		http.Error(w, "Failed to call service-b: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -38,9 +61,13 @@ func main() {
 	// Require mTLS and verify client has a SPIFFE ID
 	tlsConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hello", helloHandler)
+	mux.HandleFunc("/call-b", callServiceBHandler)
+
 	server := &http.Server{
 		Addr:      ":8080",
-		Handler:   http.HandlerFunc(helloHandler),
+		Handler:   mux,
 		TLSConfig: tlsConfig,
 	}
 
