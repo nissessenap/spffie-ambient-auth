@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 func helloHandler(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +26,24 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/hello", helloHandler)
-	log.Println("service-b listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	ctx := context.Background()
+
+	// Connect to the SPIRE Workload API
+	source, err := workloadapi.NewX509Source(ctx)
+	if err != nil {
+		log.Fatalf("Unable to create X509Source: %v", err)
+	}
+	defer source.Close()
+
+	// Require mTLS and verify client has a SPIFFE ID
+	tlsConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
+
+	server := &http.Server{
+		Addr:      ":8080",
+		Handler:   http.HandlerFunc(helloHandler),
+		TLSConfig: tlsConfig,
+	}
+
+	log.Println("service-b mTLS server listening on :8080")
+	log.Fatal(server.ListenAndServeTLS("", "")) // certs are provided by SPIRE
 }
