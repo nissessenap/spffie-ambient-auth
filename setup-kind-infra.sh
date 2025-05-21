@@ -68,7 +68,7 @@ kubectl wait --for=condition=Ready pods --all -n "$SPICEDB_NS" --timeout=180s
 
 # 7. Port-forward services for local access
 echo "[+] Port-forwarding Authentik..."
-kubectl port-forward -n "$AUTHENTIK_NS" svc/authentik 9000:9000 &
+kubectl port-forward -n "$AUTHENTIK_NS" svc/authentik-server 8080:80 &
 echo "[+] Port-forwarding SpiceDB..."
 kubectl port-forward -n "$SPICEDB_NS" svc/spicedb 50051:50051 &
 echo "[+] Port-forwarding SpiceDB Console..."
