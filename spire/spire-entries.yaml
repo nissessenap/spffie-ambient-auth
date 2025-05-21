@@ -5,11 +5,19 @@ metadata:
 spec:
   spiffeID: spiffe://example.org/ns/app/sa/service-a
   podSelector:
-    matchLabels:
-      app: service-a
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["service-a"]
+      - key: serviceaccount
+        operator: In
+        values: ["service-a"]
   namespaceSelector:
-    matchNames:
-      - app
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: In
+        values: ["app"]
+
 ---
 apiVersion: spire.spiffe.io/v1alpha1
 kind: ClusterSPIFFEID
@@ -18,8 +26,15 @@ metadata:
 spec:
   spiffeID: spiffe://example.org/ns/app/sa/service-b
   podSelector:
-    matchLabels:
-      app: service-b
+    matchExpressions:
+      - key: app
+        operator: In
+        values: ["service-b"]
+      - key: serviceaccount
+        operator: In
+        values: ["service-b"]
   namespaceSelector:
-    matchNames:
-      - app
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: In
+        values: ["app"]
