@@ -29,6 +29,9 @@ spec:
           volumeMounts:
             - name: spire-agent-socket
               mountPath: /run/spire/sockets
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///run/spire/sockets/agent.sock
       volumes:
         - name: spire-agent-socket
           hostPath:
