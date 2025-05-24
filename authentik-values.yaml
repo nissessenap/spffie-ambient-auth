@@ -4,15 +4,64 @@ authentik:
     disable_update_check: true
     disable_startup_analytics: true
     secret_key: "PleaseGenerateASecureKey"
-    # This sends anonymous usage-data, stack traces on errors and
-    # performance data to sentry.io, and is fully opt-in
-    error_reporting:
-        enabled: true
     postgresql:
         password: "ThisIsNotASecurePassword"
     # In the Helm values, set the akadmin user password and token:
     bootstrap_token: test
     bootstrap_password: test
+    
+    # Configuration for blueprints (used to create initial configuration)
+    blueprints:
+        # Default flow - this is needed for the OIDC provider
+        default:
+            enabled: true
+        # # Our custom service OIDC provider
+        # service-oidc:
+        #     name: Service OIDC
+        #     file: |
+        #         version: 1
+        #         metadata:
+        #           name: Service OIDC Blueprint
+        #           labels:
+        #             scope: service-api-oidc
+        #         entries:
+        #         - id: provider-service-api
+        #           model: authentik_providers_oauth2.OAuth2Provider
+        #           attrs:
+        #             name: "Services OIDC"
+        #             client_type: "confidential"
+        #             client_id: "services-api"
+        #             client_secret: "services-api-secret"
+        #             redirect_uris: "http://localhost:8080/callback,http://localhost:8081/callback,http://service-a:8080/callback,http://service-a:8081/callback"
+        #             token_validity: "hours=1"
+        #             include_claims_in_id_token: true
+        #             access_code_validity: "minutes=1"
+        #             authorization_flow:
+        #               attrs:
+        #                 slug: "default-provider-authorization-implicit-consent"
+        #               model: authentik_flows.Flow
+        #               lookup: slug
+        #             property_mappings:
+        #               - attrs:
+        #                   name: "authentik default OAuth mapping: OpenID 'email'"
+        #                 model: authentik_providers_oauth2.ScopeMapping
+        #                 lookup: name
+        #               - attrs:
+        #                   name: "authentik default OAuth mapping: OpenID 'profile'"
+        #                 model: authentik_providers_oauth2.ScopeMapping
+        #                 lookup: name
+        #               - attrs:
+        #                   name: "authentik default OAuth mapping: OpenID 'openid'"
+        #                 model: authentik_providers_oauth2.ScopeMapping
+        #                 lookup: name
+        #         - id: app-services-api
+        #           model: authentik_core.Application
+        #           attrs:
+        #             name: "Service APIs"
+        #             slug: "services"
+        #             provider: !KeyOf provider-service-api
+        #             meta_launch_url: ""
+        #             policy_engine_mode: "all"
 
 
 server:
