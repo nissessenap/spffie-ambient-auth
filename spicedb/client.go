@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"time"
 
 	pb "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"github.com/authzed/authzed-go/v1"
@@ -24,14 +23,14 @@ func NewClient(ctx context.Context) (*Client, error) {
 	if endpoint == "" {
 		endpoint = "dev-spicedb.spicedb:50051"
 	}
-	
+
 	presharedKey := os.Getenv("SPICEDB_PRESHARED_KEY")
 	if presharedKey == "" {
 		presharedKey = "averysecretpresharedkey"
 	}
 
 	log.Printf("[spicedb] Connecting to SpiceDB at %s", endpoint)
-	
+
 	client, err := authzed.NewClient(
 		endpoint,
 		grpcutil.WithInsecureBearerToken(presharedKey),
@@ -40,7 +39,7 @@ func NewClient(ctx context.Context) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &Client{client: client}, nil
 }
 
@@ -59,11 +58,11 @@ func (c *Client) CheckPermission(ctx context.Context, resource string, permissio
 			},
 		},
 	})
-	
+
 	if err != nil {
 		return false, err
 	}
-	
+
 	return resp.Permissionship == pb.CheckPermissionResponse_PERMISSIONSHIP_HAS_PERMISSION, nil
 }
 
@@ -73,17 +72,17 @@ func GetServiceFromSVID(svidString string) string {
 	// This is a simplified implementation - in production, you would want to parse the SVID more carefully
 	parts := []rune(svidString)
 	lastSlashIndex := -1
-	
+
 	for i := len(parts) - 1; i >= 0; i-- {
 		if parts[i] == '/' {
 			lastSlashIndex = i
 			break
 		}
 	}
-	
+
 	if lastSlashIndex >= 0 && lastSlashIndex < len(parts)-1 {
 		return string(parts[lastSlashIndex+1:])
 	}
-	
+
 	return ""
 }
