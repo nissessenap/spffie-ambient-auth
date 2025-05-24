@@ -48,3 +48,8 @@ To login
 username: akadmin
 password: PleaseGenerateASecureKey
 ```
+
+## spicedb
+
+For some reason spicedb can't handle spiffie id standard of `spiffie://-org-`, insttead we have to use `spiffie-org`.
+Sow we will have to write some kind of middelware in the code that does that translation all the time.
