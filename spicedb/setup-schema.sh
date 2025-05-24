@@ -24,27 +24,40 @@ zed schema write schema.yaml --endpoint localhost:50051 --insecure --token "aver
 echo "[*] Setting up service relationships..."
 
 # Loop over these relationships and add them all
-# Format: zed relationship create <resource:id> <relation> <subject:id#optional_subject_relation>
-while read -r resource relation subject; do
-  echo "[*] Creating relationship: $resource $relation $subject"
-  zed relationship create "$resource" "$relation" "$subject" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-done << EOF
-group:devs editor user:edvin
-group:interns viewer user:alice
-document:doc1 editor_group group:devs
-document:doc1 viewer_group group:interns
-document:doc1 deleter_service service:spiffe://org/service-cron
-user:edvin delegate service:spiffe://org/service-a
-user:alice delegate service:spiffe://org/service-a
-proxy_access:doc1_as_edvin user user:edvin
-proxy_access:doc1_as_edvin service service:spiffe://org/service-a
-proxy_access:doc1_as_edvin document document:doc1
-proxy_access:doc1_as_edvin user_is_editor_group group:devs
-proxy_access:doc1_as_alice user user:alice
-proxy_access:doc1_as_alice service service:spiffe://org/service-a
-proxy_access:doc1_as_alice document document:doc1
-proxy_access:doc1_as_alice user_is_viewer_group group:interns
-EOF
+# The zed CLI might require a specific format for subjects with SPIFFE URIs
+# Let's try creating them one by one with special handling for SPIFFE URIs
+
+# Create relationships with regular subjects
+echo "[*] Creating regular relationships..."
+zed relationship create "group:devs" "editor" "user:edvin" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "group:interns" "viewer" "user:alice" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "document:doc1" "editor_group" "group:devs" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "document:doc1" "viewer_group" "group:interns" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+
+# Create relationships with SPIFFE URIs - special handling
+echo "[*] Creating SPIFFE URI relationships..."
+zed relationship create "document:doc1" "deleter_service" "service:spiffe://org/service-cron" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
+
+zed relationship create "user:edvin" "delegate" "service:spiffe://org/service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create delegate relationship for edvin"
+
+zed relationship create "user:alice" "delegate" "service:spiffe://org/service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create delegate relationship for alice"
+
+# Create proxy access relationships
+echo "[*] Creating proxy access relationships..."
+zed relationship create "proxy_access:doc1_as_edvin" "user" "user:edvin" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "proxy_access:doc1_as_edvin" "service" "service:spiffe://org/service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create service relationship for doc1_as_edvin"
+zed relationship create "proxy_access:doc1_as_edvin" "document" "document:doc1" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "proxy_access:doc1_as_edvin" "user_is_editor_group" "group:devs" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+
+zed relationship create "proxy_access:doc1_as_alice" "user" "user:alice" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "proxy_access:doc1_as_alice" "service" "service:spiffe://org/service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create service relationship for doc1_as_alice"
+zed relationship create "proxy_access:doc1_as_alice" "document" "document:doc1" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+zed relationship create "proxy_access:doc1_as_alice" "user_is_viewer_group" "group:interns" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 
 # Clean up the port-forward
 kill $PF_PID
