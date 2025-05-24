@@ -7,19 +7,24 @@ definition service {}
 definition group {
   relation viewer: user
   relation editor: user
-
-  permission can_view = viewer + editor
-  permission can_edit = editor
 }
 
 definition document {
-  relation viewer: group | service
-  relation editor: group | service
-  relation deleter: group | service
+  relation viewer_group: group
+  relation editor_group: group
+  relation deleter_group: group
 
-  permission view = viewer->can_view + viewer
-  permission edit = editor->can_edit + editor
-  permission delete = deleter->can_edit + deleter
+  relation viewer_user: user
+  relation editor_user: user
+  relation deleter_user: user
+
+  relation viewer_service: service
+  relation editor_service: service
+  relation deleter_service: service
+
+  permission view = viewer_user + viewer_service
+  permission edit = editor_user + editor_service
+  permission delete = deleter_user + deleter_service
 }
 
 definition proxy_access {
@@ -27,7 +32,11 @@ definition proxy_access {
   relation service: service
   relation document: document
 
-  permission delegated_view = document->view & service->user->delegate
-  permission delegated_edit = document->edit & service->user->delegate
-  permission delegated_delete = document->delete & service->user->delegate
+  relation user_is_viewer_group: group
+  relation user_is_editor_group: group
+  relation user_is_deleter_group: group
+
+  permission delegated_view = document->viewer_user + document->viewer_service + user_is_viewer_group->viewer + user_is_viewer_group->editor + user_is_editor_group->editor
+  permission delegated_edit = document->editor_user + document->editor_service + user_is_editor_group->editor
+  permission delegated_delete = document->deleter_user + document->deleter_service + user_is_deleter_group->editor
 }

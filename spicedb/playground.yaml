@@ -8,19 +8,24 @@ schema: |
   definition group {
     relation viewer: user
     relation editor: user
-
-    permission can_view = viewer + editor
-    permission can_edit = editor
   }
 
   definition document {
-    relation viewer: group | service
-    relation editor: group | service
-    relation deleter: group | service
+    relation viewer_group: group
+    relation editor_group: group
+    relation deleter_group: group
 
-    permission view = viewer->can_view + viewer
-    permission edit = editor->can_edit + editor
-    permission delete = deleter->can_edit + deleter
+    relation viewer_user: user
+    relation editor_user: user
+    relation deleter_user: user
+
+    relation viewer_service: service
+    relation editor_service: service
+    relation deleter_service: service
+
+    permission view = viewer_user + viewer_service
+    permission edit = editor_user + editor_service
+    permission delete = deleter_user + deleter_service
   }
 
   definition proxy_access {
@@ -28,9 +33,13 @@ schema: |
     relation service: service
     relation document: document
 
-    permission delegated_view = document->view & service->user->delegate
-    permission delegated_edit = document->edit & service->user->delegate
-    permission delegated_delete = document->delete & service->user->delegate
+    relation user_is_viewer_group: group
+    relation user_is_editor_group: group
+    relation user_is_deleter_group: group
+
+    permission delegated_view = document->viewer_user + document->viewer_service + user_is_viewer_group->viewer + user_is_viewer_group->editor + user_is_editor_group->editor
+    permission delegated_edit = document->editor_user + document->editor_service + user_is_editor_group->editor
+    permission delegated_delete = document->deleter_user + document->deleter_service + user_is_deleter_group->editor
   }
 
 relationships: |
@@ -39,11 +48,11 @@ relationships: |
   group:interns#viewer@user:alice
 
   # Groups have access to documents
-  document:doc1#editor@group:devs
-  document:doc1#viewer@group:interns
+  document:doc1#editor_group@group:devs
+  document:doc1#viewer_group@group:interns
 
   # Direct service access (e.g., cron job)
-  document:doc1#deleter@service:spiffe://org/service-cron
+  document:doc1#deleter_service@service:spiffe://org/service-cron
 
   # Delegation
   user:edvin#delegate@service:spiffe://org/service-a
@@ -53,11 +62,13 @@ relationships: |
   proxy_access:doc1_as_edvin#user@user:edvin
   proxy_access:doc1_as_edvin#service@service:spiffe://org/service-a
   proxy_access:doc1_as_edvin#document@document:doc1
+  proxy_access:doc1_as_edvin#user_is_editor_group@group:devs
 
   # Proxy access binding (doc1 as Alice)
   proxy_access:doc1_as_alice#user@user:alice
   proxy_access:doc1_as_alice#service@service:spiffe://org/service-a
   proxy_access:doc1_as_alice#document@document:doc1
+  proxy_access:doc1_as_alice#user_is_viewer_group@group:interns
 
 assertions:
   assertTrue:
