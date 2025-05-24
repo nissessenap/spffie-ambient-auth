@@ -22,9 +22,29 @@ zed schema write schema.yaml --endpoint localhost:50051 --insecure --token "aver
 
 # Create relationships for our services
 echo "[*] Setting up service relationships..."
-zed relationship create organization:eng service service:service-a --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-zed relationship create organization:eng service service:service-b --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-zed relationship create service:service-a can_access service:service-b --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+
+# Loop over these relationships and add them all
+# Format: zed relationship create <resource:id> <relation> <subject:id#optional_subject_relation>
+while read -r resource relation subject; do
+  echo "[*] Creating relationship: $resource $relation $subject"
+  zed relationship create "$resource" "$relation" "$subject" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
+done << EOF
+group:devs editor user:edvin
+group:interns viewer user:alice
+document:doc1 editor_group group:devs
+document:doc1 viewer_group group:interns
+document:doc1 deleter_service service:spiffe://org/service-cron
+user:edvin delegate service:spiffe://org/service-a
+user:alice delegate service:spiffe://org/service-a
+proxy_access:doc1_as_edvin user user:edvin
+proxy_access:doc1_as_edvin service service:spiffe://org/service-a
+proxy_access:doc1_as_edvin document document:doc1
+proxy_access:doc1_as_edvin user_is_editor_group group:devs
+proxy_access:doc1_as_alice user user:alice
+proxy_access:doc1_as_alice service service:spiffe://org/service-a
+proxy_access:doc1_as_alice document document:doc1
+proxy_access:doc1_as_alice user_is_viewer_group group:interns
+EOF
 
 # Clean up the port-forward
 kill $PF_PID
