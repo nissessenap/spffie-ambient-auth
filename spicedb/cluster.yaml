@@ -6,8 +6,8 @@ metadata:
 spec:
   config:
     datastoreEngine: memory
+    image: "authzed/spicedb:v1.44.0"
   secretName: dev-spicedb-config
-  version: "v1.44.0"
 ---
 apiVersion: v1
 kind: Secret
