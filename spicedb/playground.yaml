@@ -47,25 +47,25 @@ relationships: |
   group:interns#viewer@user:alice
   document:doc1#editor_group@group:devs
   document:doc1#viewer_group@group:interns
-  document:doc1#deleter_service@service:spiffe://org/service-cron
-  user:edvin#delegate@service:spiffe://org/service-a
-  user:alice#delegate@service:spiffe://org/service-a
+  document:doc1#deleter_service@service:spiffe--org-service-cron
+  user:edvin#delegate@service:spiffe--org-service-a
+  user:alice#delegate@service:spiffe--org-service-a
   proxy_access:doc1_as_edvin#user@user:edvin
-  proxy_access:doc1_as_edvin#service@service:spiffe://org/service-a
+  proxy_access:doc1_as_edvin#service@service:spiffe--org-service-a
   proxy_access:doc1_as_edvin#document@document:doc1
   proxy_access:doc1_as_edvin#user_is_editor_group@group:devs
   proxy_access:doc1_as_alice#user@user:alice
-  proxy_access:doc1_as_alice#service@service:spiffe://org/service-a
+  proxy_access:doc1_as_alice#service@service:spiffe--org-service-a
   proxy_access:doc1_as_alice#document@document:doc1
   proxy_access:doc1_as_alice#user_is_viewer_group@group:interns
 
 assertions:
   assertTrue:
-    - proxy_access:doc1_as_edvin#delegated_edit@service:spiffe://org/service-a
-    - proxy_access:doc1_as_alice#delegated_view@service:spiffe://org/service-a
-    - document:doc1#delete@service:spiffe://org/service-cron
+    - proxy_access:doc1_as_edvin#delegated_edit@service:spiffe--org-service-a
+    - proxy_access:doc1_as_alice#delegated_view@service:spiffe--org-service-a
+    - document:doc1#delete@service:spiffe--org-service-cron
 
   assertFalse:
-    - proxy_access:doc1_as_alice#delegated_edit@service:spiffe://org/service-a
-    - proxy_access:doc1_as_edvin#delegated_delete@service:spiffe://org/service-b
-    - document:doc1#edit@service:spiffe://org/service-b
+    - proxy_access:doc1_as_alice#delegated_edit@service:spiffe--org-service-a
+    - proxy_access:doc1_as_edvin#delegated_delete@service:spiffe--org-service-b
+    - document:doc1#edit@service:spiffe--org-service-b
