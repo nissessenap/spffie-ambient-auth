@@ -39,3 +39,12 @@ Exec into `service-a` and use `http` endpoint for easy testing
 wget --no-check-certificate http://service-a:8081/hello -O -
 wget --no-check-certificate http://service-a:8081/call-b -O -
 ```
+
+## Authentik setup
+
+To login
+
+```shell
+username: akadmin
+password: PleaseGenerateASecureKey
+```
