@@ -1,0 +1,20 @@
+definition user {
+  relation member: organization
+}
+
+definition organization {
+  relation admin: user
+  relation service: service
+}
+
+definition service {
+  relation can_access: service
+  relation owner: organization
+  permission access = owner->service | can_access
+}
+
+definition resource {
+  relation owner: service
+  permission read = owner
+  permission write = owner
+}
