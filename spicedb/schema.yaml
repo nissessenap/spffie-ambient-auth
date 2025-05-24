@@ -10,7 +10,7 @@ definition organization {
 definition service {
   relation can_access: service
   relation owner: organization
-  permission access = owner->service | can_access
+  permission access = owner->service + can_access
 }
 
 definition resource {
