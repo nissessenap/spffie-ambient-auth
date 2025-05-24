@@ -1,0 +1,71 @@
+schema: |
+  definition user {
+    relation delegate: service
+  }
+
+  definition service {}
+
+  definition group {
+    relation viewer: user
+    relation editor: user
+
+    permission can_view = viewer + editor
+    permission can_edit = editor
+  }
+
+  definition document {
+    relation viewer: group | service
+    relation editor: group | service
+    relation deleter: group | service
+
+    permission view = viewer->can_view + viewer
+    permission edit = editor->can_edit + editor
+    permission delete = deleter->can_edit + deleter
+  }
+
+  definition proxy_access {
+    relation user: user
+    relation service: service
+    relation document: document
+
+    permission delegated_view = document->view & service->user->delegate
+    permission delegated_edit = document->edit & service->user->delegate
+    permission delegated_delete = document->delete & service->user->delegate
+  }
+
+relationships: |
+  # Edvin and Alice are in groups
+  group:devs#editor@user:edvin
+  group:interns#viewer@user:alice
+
+  # Groups have access to documents
+  document:doc1#editor@group:devs
+  document:doc1#viewer@group:interns
+
+  # Direct service access (e.g., cron job)
+  document:doc1#deleter@service:spiffe://org/service-cron
+
+  # Delegation
+  user:edvin#delegate@service:spiffe://org/service-a
+  user:alice#delegate@service:spiffe://org/service-a
+
+  # Proxy access binding (doc1 as Edvin)
+  proxy_access:doc1_as_edvin#user@user:edvin
+  proxy_access:doc1_as_edvin#service@service:spiffe://org/service-a
+  proxy_access:doc1_as_edvin#document@document:doc1
+
+  # Proxy access binding (doc1 as Alice)
+  proxy_access:doc1_as_alice#user@user:alice
+  proxy_access:doc1_as_alice#service@service:spiffe://org/service-a
+  proxy_access:doc1_as_alice#document@document:doc1
+
+assertions:
+  assertTrue:
+    - proxy_access:doc1_as_edvin#delegated_edit@service:spiffe://org/service-a
+    - proxy_access:doc1_as_alice#delegated_view@service:spiffe://org/service-a
+    - document:doc1#delete@service:spiffe://org/service-cron
+
+  assertFalse:
+    - proxy_access:doc1_as_alice#delegated_edit@service:spiffe://org/service-a
+    - proxy_access:doc1_as_edvin#delegated_delete@service:spiffe://org/service-b
+    - document:doc1#edit@service:spiffe://org/service-b
