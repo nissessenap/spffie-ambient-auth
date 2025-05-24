@@ -1,20 +1,33 @@
 definition user {
-  relation member: organization
+  relation delegate: service
 }
 
-definition organization {
-  relation admin: user
+definition service {}
+
+definition group {
+  relation viewer: user
+  relation editor: user
+
+  permission can_view = viewer + editor
+  permission can_edit = editor
+}
+
+definition document {
+  relation viewer: group | service
+  relation editor: group | service
+  relation deleter: group | service
+
+  permission view = viewer->can_view + viewer
+  permission edit = editor->can_edit + editor
+  permission delete = deleter->can_edit + deleter
+}
+
+definition proxy_access {
+  relation user: user
   relation service: service
-}
+  relation document: document
 
-definition service {
-  relation can_access: service
-  relation owner: organization
-  permission access = owner->service + can_access
-}
-
-definition resource {
-  relation owner: service
-  permission read = owner
-  permission write = owner
+  permission delegated_view = document->view & service->user->delegate
+  permission delegated_edit = document->edit & service->user->delegate
+  permission delegated_delete = document->delete & service->user->delegate
 }
