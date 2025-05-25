@@ -13,7 +13,7 @@ load-service-a: build-service-a
 	kind load docker-image $(SERVICE_A_IMAGE) --name spffie-demo
 
 build-service-b:
-	docker build -t $(SERVICE_B_IMAGE) ./service-b
+	docker build -t $(SERVICE_B_IMAGE) -f ./service-b/Dockerfile --no-cache .
 
 load-service-b: build-service-b
 	kind load docker-image $(SERVICE_B_IMAGE) --name spffie-demo
