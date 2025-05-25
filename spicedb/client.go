@@ -23,7 +23,7 @@ type Client struct {
 func NewClient(ctx context.Context) (*Client, error) {
 	endpoint := os.Getenv("SPICEDB_ENDPOINT")
 	if endpoint == "" {
-		endpoint = "dev-spicedb.spicedb:50051"
+		endpoint = "dev.spicedb:50051"
 	}
 
 	presharedKey := os.Getenv("SPICEDB_PRESHARED_KEY")
