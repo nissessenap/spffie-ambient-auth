@@ -40,6 +40,49 @@ wget --no-check-certificate http://service-a:8081/hello -O -
 wget --no-check-certificate http://service-a:8081/call-b -O -
 ```
 
+### Testing Document Operations
+
+You can test the document operations with different permissions. Service-a has endpoints to interact with service-b's document API.
+
+#### Document 1 (Full Access - View, Edit, Delete)
+
+```shell
+# View document 1
+wget --no-check-certificate http://service-a:8081/documents/view?id=doc1 -O -
+
+# Edit document 1
+wget --no-check-certificate http://service-a:8081/documents/edit?id=doc1 -O -
+
+# Delete document 1
+wget --no-check-certificate http://service-a:8081/documents/delete?id=doc1 -O -
+```
+
+#### Document 2 (View and Edit Only)
+
+```shell
+# View document 2
+wget --no-check-certificate http://service-a:8081/documents/view?id=doc2 -O -
+
+# Edit document 2
+wget --no-check-certificate http://service-a:8081/documents/edit?id=doc2 -O -
+
+# Delete document 2 (should fail with 403 Forbidden)
+wget --no-check-certificate http://service-a:8081/documents/delete?id=doc2 -O -
+```
+
+#### Document 3 (View Only)
+
+```shell
+# View document 3
+wget --no-check-certificate http://service-a:8081/documents/view?id=doc3 -O -
+
+# Edit document 3 (should fail with 403 Forbidden)
+wget --no-check-certificate http://service-a:8081/documents/edit?id=doc3 -O -
+
+# Delete document 3 (should fail with 403 Forbidden)
+wget --no-check-certificate http://service-a:8081/documents/delete?id=doc3 -O -
+```
+
 ## Authentik setup
 
 To login

@@ -34,16 +34,30 @@ zed relationship create "group:interns" "viewer" "user:alice" --endpoint localho
 zed relationship create "document:doc1" "editor_group" "group:devs" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 zed relationship create "document:doc1" "viewer_group" "group:interns" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 
-# Create relationships with SPIFFE URIs - special handling
-echo "[*] Creating SPIFFE URI relationships..."
-zed relationship create "document:doc1" "deleter_service" "service:spiffe-example-org-ns-app-sa-cron" \
-  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
-zed relationship create "document:doc1" "deleter_service" "service:spiffe-example-org-ns-app-sa-service-a" \
-  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
-  
-# Add viewer relationship for service-b
+# Create test documents with different permission levels for service-a
+echo "[*] Setting up test documents for service-b..."
+# TODO, I don't think we need this one, but let's keep it for now
+# Add service-b as a document that service-a can access
 zed relationship create "document:service-b" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship for service-b"
+
+# Document 1: service-a can view, edit and delete
+zed relationship create "document:doc1" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship"
+zed relationship create "document:doc1" "editor_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create editor_service relationship"
+zed relationship create "document:doc1" "deleter_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
+
+# Document 2: service-a can view and edit only
+zed relationship create "document:doc2" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship"
+zed relationship create "document:doc2" "editor_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create editor_service relationship"
+
+# Document 3: service-a can view only
+zed relationship create "document:doc3" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship"
 
 zed relationship create "user:edvin" "delegate" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create delegate relationship for edvin"
