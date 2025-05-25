@@ -2,6 +2,7 @@ package spicedb
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -90,25 +91,25 @@ func GetServiceFromSVID(svidString string) string {
 
 // GetSVIDInSSpaceDBFormat converts a SPIFFE ID to the format used by SpiceDB schema
 // Example: spiffe://example.org/ns/app/sa/service-a ->  spiffe-example-org-ns-app-sa-service-a
-func GetSVIDInSSpaceDBFormat(svidString string) string {
+func GetSVIDInSSpaceDBFormat(svidString string) (string, error) {
 	if svidString == "" {
-		return ""
+		return "", fmt.Errorf("SVID string cannot be empty")
 	}
 
 	// Verify the SPIFFE URI format
 	prefix := "spiffe://"
 	if !strings.HasPrefix(svidString, prefix) {
-		return ""
+		return "", fmt.Errorf("invalid SVID format")
 	}
-	
+
 	// For the case with no path segments (like "spiffe://example.org"), return empty as per test spec
 	if !strings.Contains(svidString[len(prefix):], "/") {
-		return ""
+		return "", fmt.Errorf("SVID string must contain at least one path segment")
 	}
-	
+
 	// Extract domain and path parts
 	withoutScheme := svidString[len(prefix):]
-	
+
 	// Build result with dashes instead of dots and slashes
 	result := "spiffe-"
 	for _, char := range withoutScheme {
@@ -119,6 +120,6 @@ func GetSVIDInSSpaceDBFormat(svidString string) string {
 			result += string(char)
 		}
 	}
-	
-	return result
+
+	return result, nil
 }

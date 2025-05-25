@@ -20,12 +20,14 @@ func AuthorizeWithSpiceDB(ctx context.Context) tlsconfig.Authorizer {
 		// Create SpiceDB client
 		spicedbClient, err := spicedb.NewClient(ctx)
 		if err != nil {
-			log.Printf("[error] Failed to create SpiceDB client: %v", err)
 			return fmt.Errorf("authorization service unavailable: %w", err)
 		}
 
 		// Extract service name from peer SVID
-		serviceName := spicedb.GetServiceFromSVID(peerID.String())
+		serviceName, err := spicedb.GetSVIDInSSpaceDBFormat(peerID.String())
+		if err != nil {
+			return fmt.Errorf("failed to get service name from SVID: %w", err)
+		}
 		log.Printf("[authz] Checking if %s can access service-b", serviceName)
 
 		// Check if the calling service can access this service
