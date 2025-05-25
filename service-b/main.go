@@ -24,25 +24,23 @@ func AuthorizeWithSpiceDB(ctx context.Context) tlsconfig.Authorizer {
 		}
 
 		// Extract service name from peer SVID
-		serviceName, err := spicedb.GetSVIDInSSpaceDBFormat(peerID.String())
+		subject, err := spicedb.GetSVIDInSSpaceDBFormat(peerID.String())
 		if err != nil {
 			return fmt.Errorf("failed to get service name from SVID: %w", err)
 		}
-		log.Printf("[authz] Checking if %s can access service-b", serviceName)
+		log.Printf("[authz] Checking if %s can access service-b", subject)
 
 		// Check if the calling service can access this service
-		allowed, err := spicedbClient.CheckPermission(ctx, "service-b", "access", serviceName)
+		allowed, err := spicedbClient.CheckPermission(ctx, "service-b", "viewer", subject)
 		if err != nil {
-			log.Printf("[error] Failed to check permission: %v", err)
 			return fmt.Errorf("failed to check authorization: %w", err)
 		}
 
 		if !allowed {
-			log.Printf("[authz] Access denied: %s is not permitted to access service-b", serviceName)
-			return fmt.Errorf("service %s is not authorized to access service-b", serviceName)
+			return fmt.Errorf("service %s is not authorized to access service-b", subject)
 		}
 
-		log.Printf("[authz] Access granted: %s is permitted to access service-b", serviceName)
+		log.Printf("[authz] Access granted: %s is permitted to access service-b", subject)
 		return nil
 	}
 }

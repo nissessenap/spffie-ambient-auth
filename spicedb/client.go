@@ -52,7 +52,7 @@ func (c *Client) CheckPermission(ctx context.Context, resource string, permissio
 			ObjectType: "service",
 			ObjectId:   resource,
 		},
-		Permission: "access",
+		Permission: permission,
 		Subject: &pb.SubjectReference{
 			Object: &pb.ObjectReference{
 				ObjectType: "service",
