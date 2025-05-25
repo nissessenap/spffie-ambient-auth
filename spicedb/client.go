@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 
 	pb "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"github.com/authzed/authzed-go/v1"
@@ -85,4 +86,39 @@ func GetServiceFromSVID(svidString string) string {
 	}
 
 	return ""
+}
+
+// GetSVIDInSSpaceDBFormat converts a SPIFFE ID to the format used by SpiceDB schema
+// Example: spiffe://example.org/ns/app/sa/service-a ->  spiffe-example-org-ns-app-sa-service-a
+func GetSVIDInSSpaceDBFormat(svidString string) string {
+	if svidString == "" {
+		return ""
+	}
+
+	// Verify the SPIFFE URI format
+	prefix := "spiffe://"
+	if !strings.HasPrefix(svidString, prefix) {
+		return ""
+	}
+	
+	// For the case with no path segments (like "spiffe://example.org"), return empty as per test spec
+	if !strings.Contains(svidString[len(prefix):], "/") {
+		return ""
+	}
+	
+	// Extract domain and path parts
+	withoutScheme := svidString[len(prefix):]
+	
+	// Build result with dashes instead of dots and slashes
+	result := "spiffe-"
+	for _, char := range withoutScheme {
+		switch char {
+		case '.', '/':
+			result += "-"
+		default:
+			result += string(char)
+		}
+	}
+	
+	return result
 }
