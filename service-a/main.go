@@ -165,9 +165,6 @@ func main() {
 	mux.HandleFunc("/documents/view", viewDocumentHandler)
 	mux.HandleFunc("/documents/edit", editDocumentHandler)
 	mux.HandleFunc("/documents/delete", deleteDocumentHandler)
-	mux.HandleFunc("/documents/view", viewDocumentHandler)
-	mux.HandleFunc("/documents/edit", editDocumentHandler)
-	mux.HandleFunc("/documents/delete", deleteDocumentHandler)
 
 	server := &http.Server{
 		Addr:      ":8080",
