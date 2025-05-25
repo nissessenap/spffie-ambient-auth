@@ -36,6 +36,11 @@ zed relationship create "document:doc1" "viewer_group" "group:interns" --endpoin
 
 # Create test documents with different permission levels for service-a
 echo "[*] Setting up test documents for service-b..."
+# TODO, I don't think we need this one, but let's keep it for now
+# Add service-b as a document that service-a can access
+zed relationship create "document:service-b" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship for service-b"
+
 # Document 1: service-a can view, edit and delete
 zed relationship create "document:doc1" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship"
