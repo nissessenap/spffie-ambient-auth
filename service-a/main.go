@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/NissesSenap/spffie-ambient-auth/spicedb"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
@@ -25,62 +24,6 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Received Bearer token: %s\n", token)
 	} else {
 		fmt.Fprintf(w, "No Bearer token received.\n")
-	}
-}
-
-// checkRoleHandler demonstrates role-based access control with SpiceDB
-func checkRoleHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	// Get the requested role from query parameter
-	role := r.URL.Query().Get("role")
-	if role == "" {
-		role = "reader" // Default role to check
-	}
-
-	// Create workload API source
-	source, err := workloadapi.NewX509Source(ctx)
-	if err != nil {
-		http.Error(w, "Failed to create X509Source: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer source.Close()
-
-	// Get our SVID to determine our service identity
-	svid, err := source.GetX509SVID()
-	if err != nil {
-		http.Error(w, "Failed to get X509SVID: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Extract service name from SVID
-	serviceName := spicedb.GetServiceFromSVID(svid.ID.String())
-	log.Printf("[rbac] Checking if %s has role: %s", serviceName, role)
-
-	// Connect to SpiceDB
-	spicedbClient, err := spicedb.NewClient(ctx)
-	if err != nil {
-		log.Printf("[error] Failed to create SpiceDB client: %v", err)
-		http.Error(w, "Authorization service unavailable: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
-	// In a real system, we would check against a resource based on the request path
-	// For this demo, we'll just check against a fixed resource "api"
-	allowed, err := spicedbClient.CheckPermission(ctx, "api", role, serviceName)
-	if err != nil {
-		log.Printf("[error] Failed to check role permission: %v", err)
-		http.Error(w, "Failed to check authorization: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if allowed {
-		log.Printf("[rbac] Access granted: %s has role %s for 'api'", serviceName, role)
-		fmt.Fprintf(w, "Authorization successful!\n")
-		fmt.Fprintf(w, "Service %s has role '%s' for resource 'api'\n", serviceName, role)
-	} else {
-		log.Printf("[rbac] Access denied: %s does not have role %s for 'api'", serviceName, role)
-		http.Error(w, fmt.Sprintf("Not authorized: service %s does not have role '%s'", serviceName, role), http.StatusForbidden)
 	}
 }
 
@@ -135,7 +78,6 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hello", helloHandler)
 	mux.HandleFunc("/call-b", callServiceBHandler)
-	mux.HandleFunc("/check-role", checkRoleHandler)
 
 	server := &http.Server{
 		Addr:      ":8080",
