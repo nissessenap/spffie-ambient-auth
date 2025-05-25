@@ -40,6 +40,10 @@ zed relationship create "document:doc1" "deleter_service" "service:spiffe-exampl
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
 zed relationship create "document:doc1" "deleter_service" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
+  
+# Add viewer relationship for service-b
+zed relationship create "document:service-b" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship for service-b"
 
 zed relationship create "user:edvin" "delegate" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create delegate relationship for edvin"

@@ -49,7 +49,7 @@ func NewClient(ctx context.Context) (*Client, error) {
 func (c *Client) CheckPermission(ctx context.Context, resource string, permission string, subject string) (bool, error) {
 	resp, err := c.client.CheckPermission(ctx, &pb.CheckPermissionRequest{
 		Resource: &pb.ObjectReference{
-			ObjectType: "service",
+			ObjectType: "document",
 			ObjectId:   resource,
 		},
 		Permission: permission,

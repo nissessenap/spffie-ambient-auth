@@ -30,8 +30,8 @@ func AuthorizeWithSpiceDB(ctx context.Context) tlsconfig.Authorizer {
 		}
 		log.Printf("[authz] Checking if %s can access service-b", subject)
 
-		// Check if the calling service can access this service
-		allowed, err := spicedbClient.CheckPermission(ctx, "service-b", "viewer", subject)
+		// Check if the calling service can access this service as a document with view permission
+		allowed, err := spicedbClient.CheckPermission(ctx, "service-b", "view", subject)
 		if err != nil {
 			return fmt.Errorf("failed to check authorization: %w", err)
 		}
