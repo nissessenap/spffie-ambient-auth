@@ -58,6 +58,7 @@ func handleDocumentOperation(w http.ResponseWriter, r *http.Request, operation s
 	// Prepare request based on operation
 	var req *http.Request
 	url := fmt.Sprintf("https://service-b:8080/documents/%s", documentID)
+	log.Printf("[debug] Creating request to URL: %s with method: %s", url, operation)
 
 	switch operation {
 	case "view":

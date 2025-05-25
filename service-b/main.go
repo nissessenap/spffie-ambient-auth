@@ -45,6 +45,9 @@ func logPeerInfo(r *http.Request) string {
 
 // documentHandler handles document operations (view/edit/delete)
 func documentHandler(w http.ResponseWriter, r *http.Request) {
+	// Log the request details to help with debugging
+	log.Printf("[debug] documentHandler received request for path: %s, method: %s", r.URL.Path, r.Method)
+	
 	spiffeID := logPeerInfo(r)
 	if spiffeID == "" {
 		http.Error(w, "No SPIFFE ID found in request", http.StatusUnauthorized)
@@ -53,6 +56,8 @@ func documentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Extract document ID from path
 	pathParts := strings.Split(r.URL.Path, "/")
+	log.Printf("[debug] Path parts: %v", pathParts)
+	
 	if len(pathParts) < 3 {
 		http.Error(w, "Invalid path, should be /documents/{id}", http.StatusBadRequest)
 		return
@@ -135,6 +140,9 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logPeerInfo(r)
+	
+	// Log the request details to help with debugging
+	log.Printf("[debug] helloHandler received request for path: %s, method: %s", r.URL.Path, r.Method)
 
 	fmt.Fprintf(w, "Hello from service-b!\n")
 	if token != "" {
@@ -166,8 +174,10 @@ func main() {
 
 	// Set up the HTTP handlers
 	mux := http.NewServeMux()
-	mux.HandleFunc("/hello", helloHandler)
+	
+	// Make sure the document handler gets precedence for /documents/ paths
 	mux.HandleFunc("/documents/", documentHandler)
+	mux.HandleFunc("/hello", helloHandler)
 
 	server := &http.Server{
 		Addr:      ":8080",
