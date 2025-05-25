@@ -14,34 +14,17 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
-// AuthorizeWithSpiceDB creates a TLS authorization function that uses SpiceDB
-func AuthorizeWithSpiceDB(ctx context.Context) tlsconfig.Authorizer {
+// ValidateSVID creates a TLS authorization function that just validates the SVID format
+// The actual authorization checks will be done in the specific HTTP handlers
+func ValidateSVID(ctx context.Context) tlsconfig.Authorizer {
 	return func(peerID spiffeid.ID, verifiedChains [][]*x509.Certificate) error {
-		// Create SpiceDB client
-		spicedbClient, err := spicedb.NewClient(ctx)
-		if err != nil {
-			return fmt.Errorf("authorization service unavailable: %w", err)
-		}
-
-		// Extract service name from peer SVID
+		// Extract service name from peer SVID - just to validate the format is correct
 		subject, err := spicedb.GetSVIDInSSpaceDBFormat(peerID.String())
 		if err != nil {
-			return fmt.Errorf("failed to get service name from SVID: %w", err)
+			return fmt.Errorf("failed to validate SVID format: %w", err)
 		}
-		log.Printf("[authz] Checking if %s can access service-b", subject)
-
-		// For TLS authorization at connection level, we'll just check for the basic view permission
-		// More granular checks will be done at the HTTP handler level
-		allowed, err := spicedbClient.CheckPermission(ctx, "service-b", "view", subject)
-		if err != nil {
-			return fmt.Errorf("failed to check authorization: %w", err)
-		}
-
-		if !allowed {
-			return fmt.Errorf("service %s is not authorized to access service-b", subject)
-		}
-
-		log.Printf("[authz] Access granted: %s is permitted to access service-b", subject)
+		
+		log.Printf("[tls] Connection established with peer: %s", subject)
 		return nil
 	}
 }
@@ -178,8 +161,8 @@ func main() {
 	}
 	log.Printf("Service-B running with SVID: %s", svid.ID)
 
-	// Require mTLS and authorize clients using SpiceDB
-	tlsConfig := tlsconfig.MTLSServerConfig(source, source, AuthorizeWithSpiceDB(ctx))
+	// Require mTLS and validate client SVID
+	tlsConfig := tlsconfig.MTLSServerConfig(source, source, ValidateSVID(ctx))
 
 	// Set up the HTTP handlers
 	mux := http.NewServeMux()
