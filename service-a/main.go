@@ -93,41 +93,6 @@ func callServiceBHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer source.Close()
 
-	// Get our own SVID to determine our service identity
-	svid, err := source.GetX509SVID()
-	if err != nil {
-		http.Error(w, "Failed to get X509SVID: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Extract service name from our SVID
-	serviceName := spicedb.GetServiceFromSVID(svid.ID.String())
-	log.Printf("[authz] Our service identity: %s", serviceName)
-
-	// Check authorization with SpiceDB
-	spicedbClient, err := spicedb.NewClient(ctx)
-	if err != nil {
-		log.Printf("[error] Failed to create SpiceDB client: %v", err)
-		http.Error(w, "Authorization service unavailable: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
-	// Check if our service can access service-b
-	allowed, err := spicedbClient.CheckPermission(ctx, "service-b", "access", serviceName)
-	if err != nil {
-		log.Printf("[error] Failed to check permission: %v", err)
-		http.Error(w, "Failed to check authorization: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if !allowed {
-		log.Printf("[authz] Access denied: %s is not permitted to access service-b", serviceName)
-		http.Error(w, "Not authorized to access service-b", http.StatusForbidden)
-		return
-	}
-
-	log.Printf("[authz] Access granted: %s is permitted to access service-b", serviceName)
-
 	tlsConfig := tlsconfig.MTLSClientConfig(source, source, tlsconfig.AuthorizeAny())
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConfig}}
 	resp, err := client.Get("https://service-b:8080/hello")
