@@ -36,27 +36,31 @@ zed relationship create "document:doc1" "viewer_group" "group:interns" --endpoin
 
 # Create relationships with SPIFFE URIs - special handling
 echo "[*] Creating SPIFFE URI relationships..."
-zed relationship create "document:doc1" "deleter_service" "service:spiffe-org-service-cron" \
+zed relationship create "document:doc1" "deleter_service" "service:spiffe-example-org-ns-app-sa-cron" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
-zed relationship create "document:doc1" "deleter_service" "service:spiffe-org-service-a" \
+zed relationship create "document:doc1" "deleter_service" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create deleter_service relationship"
+  
+# Add viewer relationship for service-b
+zed relationship create "document:service-b" "viewer_service" "service:spiffe-example-org-ns-app-sa-service-a" \
+  --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create viewer_service relationship for service-b"
 
-zed relationship create "user:edvin" "delegate" "service:spiffe-org-service-a" \
+zed relationship create "user:edvin" "delegate" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create delegate relationship for edvin"
 
-zed relationship create "user:alice" "delegate" "service:spiffe-org-service-a" \
+zed relationship create "user:alice" "delegate" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create delegate relationship for alice"
 
 # Create proxy access relationships
 echo "[*] Creating proxy access relationships..."
 zed relationship create "proxy_access:doc1_as_edvin" "user" "user:edvin" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-zed relationship create "proxy_access:doc1_as_edvin" "service" "service:spiffe-org-service-a" \
+zed relationship create "proxy_access:doc1_as_edvin" "service" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create service relationship for doc1_as_edvin"
 zed relationship create "proxy_access:doc1_as_edvin" "document" "document:doc1" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 zed relationship create "proxy_access:doc1_as_edvin" "user_is_editor_group" "group:devs" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 
 zed relationship create "proxy_access:doc1_as_alice" "user" "user:alice" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-zed relationship create "proxy_access:doc1_as_alice" "service" "service:spiffe-org-service-a" \
+zed relationship create "proxy_access:doc1_as_alice" "service" "service:spiffe-example-org-ns-app-sa-service-a" \
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create service relationship for doc1_as_alice"
 zed relationship create "proxy_access:doc1_as_alice" "document" "document:doc1" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 zed relationship create "proxy_access:doc1_as_alice" "user_is_viewer_group" "group:interns" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
