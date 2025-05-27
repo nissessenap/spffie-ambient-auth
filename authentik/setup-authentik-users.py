@@ -6,9 +6,9 @@ This script creates test users in Authentik via the API using a pre-created API 
 This is the most reliable method for API access.
 
 Prerequisites:
-1. Authentik running and accessible (kubectl port-forward -n authentik svc/authentik-server 8080:80)
+1. Authentik running and accessible (kubectl port-forward -n authentik svc/authentik-server 9000:80)
 2. Create an API token in Authentik web UI:
-   - Go to http://localhost:8080/if/admin/#/core/tokens
+   - Go to http://localhost:9000/if/admin/#/core/tokens
    - Login with akadmin/test
    - Create new token with identifier "api-setup" 
    - Copy the token value
@@ -125,7 +125,7 @@ def create_test_users():
     if not AUTHENTIK_TOKEN:
         print("[✗] AUTHENTIK_TOKEN environment variable not set")
         print("Please create an API token in Authentik and set it:")
-        print("1. Go to http://localhost:8080/if/admin/#/core/tokens")
+        print("1. Go to http://localhost:9000/if/admin/#/core/tokens")
         print("2. Login with akadmin/test")
         print("3. Create new token with identifier 'api-setup'")
         print("4. Copy the token and run: export AUTHENTIK_TOKEN='your-token-here'")
