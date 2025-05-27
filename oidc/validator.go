@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 // UserInfo represents user information extracted from the JWT token
@@ -20,30 +22,63 @@ type UserInfo struct {
 	Subject  string   `json:"sub"`
 }
 
-// TokenValidator handles OIDC token validation
+// TokenValidator handles OIDC token validation using SPIFFE identity
 type TokenValidator struct {
-	provider *oidc.Provider
-	verifier *oidc.IDTokenVerifier
-	clientID string
+	provider    *oidc.Provider
+	verifier    *oidc.IDTokenVerifier
+	clientID    string
+	spireSource *workloadapi.X509Source
 }
 
-// NewTokenValidator creates a new OIDC token validator
+// NewTokenValidator creates a new OIDC token validator using SPIFFE identity
 func NewTokenValidator(ctx context.Context, issuerURL, clientID string) (*TokenValidator, error) {
-	// Create OIDC provider
+	// Create SPIRE X509Source for mTLS authentication to Authentik
+	spireSource, err := workloadapi.NewX509Source(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SPIRE X509Source: %w", err)
+	}
+
+	// Create custom HTTP client that uses SPIFFE identity for mTLS
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				// Use SPIFFE certificates for client authentication
+				GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+					svid, err := spireSource.GetX509SVID()
+					if err != nil {
+						return nil, fmt.Errorf("failed to get SVID: %w", err)
+					}
+
+					return &tls.Certificate{
+						Certificate: [][]byte{svid.Certificates[0].Raw},
+						PrivateKey:  svid.PrivateKey,
+					}, nil
+				},
+				// For development - in production, verify Authentik's certificate
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	// Create OIDC provider with custom HTTP client
+	ctx = oidc.ClientContext(ctx, httpClient)
 	provider, err := oidc.NewProvider(ctx, issuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OIDC provider: %w", err)
 	}
 
-	// Create verifier
+	// Create verifier - no client secret needed, we use SPIFFE identity
 	verifier := provider.Verifier(&oidc.Config{
 		ClientID: clientID,
+		// Skip client_secret verification since we're using SPIFFE mTLS
+		SkipClientIDCheck: false,
 	})
 
 	return &TokenValidator{
-		provider: provider,
-		verifier: verifier,
-		clientID: clientID,
+		provider:    provider,
+		verifier:    verifier,
+		clientID:    clientID,
+		spireSource: spireSource,
 	}, nil
 }
 
@@ -109,6 +144,27 @@ func (tv *TokenValidator) ValidateToken(ctx context.Context, tokenString string)
 	}
 
 	return userInfo, nil
+}
+
+// Close cleans up the SPIRE source
+func (tv *TokenValidator) Close() {
+	if tv.spireSource != nil {
+		tv.spireSource.Close()
+	}
+}
+
+// GetSPIFFEIdentity returns the current SPIFFE identity of this service
+func (tv *TokenValidator) GetSPIFFEIdentity() (string, error) {
+	if tv.spireSource == nil {
+		return "", errors.New("SPIRE source not initialized")
+	}
+
+	svid, err := tv.spireSource.GetX509SVID()
+	if err != nil {
+		return "", fmt.Errorf("failed to get SVID: %w", err)
+	}
+
+	return svid.ID.String(), nil
 }
 
 // ExtractBearerToken extracts a bearer token from the Authorization header
