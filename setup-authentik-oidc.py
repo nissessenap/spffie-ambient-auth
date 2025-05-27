@@ -1,90 +1,92 @@
 #!/usr/bin/env python3
 """
-Setup OIDC application in Authentik for service-b
+Setup OIDC application in Authentik for service-b using token-based authentication
 """
 
 import requests
 import json
 import sys
-import time
+import os
 
 def setup_oidc_application():
     # Authentik configuration
-    authentik_url = "http://localhost:8080"
-    admin_username = "akadmin"
-    admin_password = "test"
+    authentik_url = "http://localhost:9000"  # Changed to match port-forward
+    authentik_token = os.getenv("AUTHENTIK_TOKEN")
     
-    # Create session
+    if not authentik_token:
+        print("[✗] AUTHENTIK_TOKEN environment variable not set")
+        print("Please create an API token in Authentik and set it:")
+        print("1. Go to http://localhost:9000/if/admin/#/core/tokens")
+        print("2. Login with akadmin/test")
+        print("3. Create new token with identifier 'api-setup'")
+        print("4. Copy the token and run: export AUTHENTIK_TOKEN='your-token-here'")
+        return False
+    
+    # Create session with token authentication
     session = requests.Session()
+    session.headers.update({
+        "Authorization": f"Bearer {authentik_token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    })
     
-    # Get CSRF token and login
-    login_url = f"{authentik_url}/flows/default-authentication-flow/"
-    print(f"Getting login page from {login_url}")
+    print(f"[+] Testing connection to Authentik at {authentik_url}...")
     
     try:
-        response = session.get(login_url)
-        response.raise_for_status()
-        
-        # Extract CSRF token from login page
-        csrf_token = None
-        for line in response.text.split('\n'):
-            if 'csrfmiddlewaretoken' in line and 'value=' in line:
-                csrf_token = line.split('value="')[1].split('"')[0]
-                break
-        
-        if not csrf_token:
-            print("Failed to extract CSRF token")
-            return False
-            
-        print(f"Extracted CSRF token: {csrf_token[:20]}...")
-        
-        # Login
-        login_data = {
-            'csrfmiddlewaretoken': csrf_token,
-            'uid_field': admin_username,
-            'password': admin_password,
-        }
-        
-        response = session.post(login_url, data=login_data, allow_redirects=True)
-        print(f"Login response status: {response.status_code}")
-        
+        # Test API connection
+        response = session.get(f"{authentik_url}/api/v3/core/users/")
         if response.status_code != 200:
-            print(f"Login failed: {response.text[:500]}")
+            print(f"[✗] API connection failed: {response.status_code} - {response.text}")
             return False
-            
-        # Check if we're logged in by trying to access admin interface
-        admin_check = session.get(f"{authentik_url}/if/admin/")
-        if admin_check.status_code != 200:
-            print("Failed to access admin interface after login")
+        print("[+] Successfully connected to Authentik API")
+        
+        # First, get the default authorization flow UUID
+        flows_response = session.get(f"{authentik_url}/api/v3/flows/instances/")
+        if flows_response.status_code != 200:
+            print(f"[✗] Failed to get flows: {flows_response.status_code}")
             return False
-            
-        print("Successfully logged in to Authentik")
         
-        # Now use the API with session cookies
-        api_headers = {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrf_token,
-            'Referer': authentik_url
-        }
+        flows = flows_response.json()
+        auth_flow_uuid = None
+        invalidation_flow_uuid = None
         
-        # First, create a provider (OAuth2/OpenID Provider)
+        for flow in flows.get('results', []):
+            if flow.get('slug') == 'default-provider-authorization-explicit-consent':
+                auth_flow_uuid = flow['pk']
+            elif flow.get('slug') == 'default-provider-invalidation-flow':
+                invalidation_flow_uuid = flow['pk']
+        
+        if not auth_flow_uuid:
+            print("[!] Could not find default authorization flow, using first available...")
+            for flow in flows.get('results', []):
+                if 'authorization' in flow.get('slug', '').lower():
+                    auth_flow_uuid = flow['pk']
+                    break
+        
+        if not invalidation_flow_uuid:
+            print("[!] Could not find invalidation flow, using first available...")
+            for flow in flows.get('results', []):
+                if 'invalidation' in flow.get('slug', '').lower():
+                    invalidation_flow_uuid = flow['pk']
+                    break
+        
+        print(f"Using authorization flow: {auth_flow_uuid}")
+        print(f"Using invalidation flow: {invalidation_flow_uuid}")
+        
+        # Create provider with empty redirect URIs first
         provider_data = {
             "name": "service-b-provider",
-            "authorization_flow": "default-provider-authorization-explicit-consent",  # Use default flow
-            "client_type": "confidential",
+            "authorization_flow": auth_flow_uuid,
+            "invalidation_flow": invalidation_flow_uuid,
+            "client_type": "confidential", 
             "client_id": "service-b",
-            "client_secret": "service-b-secret-key",  # In production, use a secure random secret
-            "redirect_uris": "http://localhost:8081/auth/callback\nhttp://service-a:8080/auth/callback",
-            "sub_mode": "hashed_user_id",
-            "include_claims_in_id_token": True,
-            "signing_key": None,  # Use default
-            "property_mappings": []  # Use default mappings
+            "client_secret": "service-b-secret-key",
+            "redirect_uris": []
         }
         
         print("Creating OAuth2/OpenID provider...")
         provider_response = session.post(
             f"{authentik_url}/api/v3/providers/oauth2/",
-            headers=api_headers,
             json=provider_data
         )
         
@@ -112,7 +114,6 @@ def setup_oidc_application():
         print("Creating application...")
         app_response = session.post(
             f"{authentik_url}/api/v3/core/applications/",
-            headers=api_headers,
             json=app_data
         )
         
@@ -141,6 +142,19 @@ def setup_oidc_application():
 
 if __name__ == "__main__":
     print("Setting up OIDC application in Authentik...")
+    
+    # Check if Authentik is accessible
+    try:
+        response = requests.get("http://localhost:9000/api/v3/", timeout=5)
+        if response.status_code != 200:
+            print(f"[✗] Authentik is not accessible at http://localhost:9000")
+            print("Make sure to run: kubectl port-forward -n authentik svc/authentik-server 9000:80")
+            sys.exit(1)
+    except requests.exceptions.ConnectionError:
+        print(f"[✗] Cannot connect to Authentik at http://localhost:9000")
+        print("Make sure to run: kubectl port-forward -n authentik svc/authentik-server 9000:80")
+        sys.exit(1)
+    
     success = setup_oidc_application()
     if success:
         print("\n✅ OIDC application setup completed successfully!")
