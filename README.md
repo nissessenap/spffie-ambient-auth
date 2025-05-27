@@ -88,6 +88,7 @@ wget --no-check-certificate http://service-a:8081/documents/delete?id=doc3 -O -
 To login
 
 ```shell
+kubectl port-forward -n authentik svc/authentik-server 9000:80 &
 username: akadmin
 password: PleaseGenerateASecureKey
 ```
