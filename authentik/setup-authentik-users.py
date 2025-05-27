@@ -19,7 +19,7 @@ import sys
 from typing import List, Dict, Any
 
 # Configuration
-AUTHENTIK_BASE_URL = "http://localhost:8080"
+AUTHENTIK_BASE_URL = "http://localhost:9000"
 ADMIN_USERNAME = "akadmin"
 ADMIN_PASSWORD = "test"  # From your authentik-values.yaml bootstrap_password
 
@@ -118,28 +118,28 @@ def create_test_users():
     test_users = [
         {
             "username": "alice",
-            "email": "alice@example.com",
+            "email": "alice@foo.com",
             "name": "Alice Johnson",
             "is_active": True,
             "groups": ["admin"]
         },
         {
             "username": "bob",
-            "email": "bob@example.com", 
+            "email": "bob@foo.com", 
             "name": "Bob Smith",
             "is_active": True,
             "groups": ["user"]
         },
         {
             "username": "charlie",
-            "email": "charlie@example.com",
+            "email": "charlie@foo.com",
             "name": "Charlie Brown",
             "is_active": True,
             "groups": ["user"]
         },
         {
             "username": "dana",
-            "email": "dana@example.com",
+            "email": "dana@foo.com",
             "name": "Dana Wilson",
             "is_active": True,
             "groups": ["manager"]
