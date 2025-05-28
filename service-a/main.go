@@ -80,11 +80,11 @@ func generatePKCE() (verifier, challenge string, err error) {
 func getOIDCConfig() *OIDCConfig {
 	// For demo purposes, using localhost - in production use proper service names
 	baseURL := "http://localhost:9000" // Authentik server
-
+	
 	return &OIDCConfig{
 		AuthURL:     baseURL + "/application/o/authorize/",
 		TokenURL:    baseURL + "/application/o/token/",
-		ClientID:    "spiffe://example.org/spiffe-services", // Our SPIFFE-based client ID
+		ClientID:    "spiffe-pkce-client", // Updated to use the new PKCE client ID
 		RedirectURI: "http://localhost:8081/callback",        // Plain HTTP for demo
 		Scope:       "openid profile email groups",
 	}
