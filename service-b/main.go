@@ -230,8 +230,8 @@ func main() {
 
 	// Initialize OIDC token validator with SPIFFE-based authentication
 	// Use the service's SPIFFE ID as the OIDC client ID
-	authentikURL := "http://authentik.authentik.svc.cluster.local:80/application/o/spiffe-services/" // SPIFFE application issuer URL
-	spiffeClientID := svid.ID.String()                                                               // Use our SPIFFE ID as the client ID
+	authentikURL := "http://authentik-server.authentik.svc.cluster.local:80/application/o/spiffe-services/" // SPIFFE application issuer URL
+	spiffeClientID := svid.ID.String()                                                                      // Use our SPIFFE ID as the client ID
 
 	log.Printf("Initializing OIDC validator with SPIFFE client ID: %s", spiffeClientID)
 	tokenValidator, err := oidc.NewTokenValidator(ctx, authentikURL, spiffeClientID)
