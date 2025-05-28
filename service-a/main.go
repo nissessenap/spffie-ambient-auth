@@ -32,11 +32,11 @@ type PKCESession struct {
 
 // OIDCConfig holds OIDC configuration
 type OIDCConfig struct {
-	AuthURL      string
-	TokenURL     string
-	ClientID     string
-	RedirectURI  string
-	Scope        string
+	AuthURL     string
+	TokenURL    string
+	ClientID    string
+	RedirectURI string
+	Scope       string
 }
 
 // TokenResponse represents OAuth2/OIDC token response
@@ -80,12 +80,12 @@ func generatePKCE() (verifier, challenge string, err error) {
 func getOIDCConfig() *OIDCConfig {
 	// For demo purposes, using localhost - in production use proper service names
 	baseURL := "http://localhost:9000" // Authentik server
-	
+
 	return &OIDCConfig{
 		AuthURL:     baseURL + "/application/o/authorize/",
 		TokenURL:    baseURL + "/application/o/token/",
-		ClientID:    "spiffe-pkce-client", // Updated to use the new PKCE client ID
-		RedirectURI: "http://localhost:8081/callback",        // Plain HTTP for demo
+		ClientID:    "spiffe-pkce-client",             // Updated to use the new PKCE client ID
+		RedirectURI: "http://localhost:8081/callback", // Plain HTTP for demo
 		Scope:       "openid profile email groups",
 	}
 }
@@ -763,18 +763,16 @@ func main() {
 	mux.HandleFunc("/documents/view", viewDocumentHandler)
 	mux.HandleFunc("/documents/edit", editDocumentHandler)
 	mux.HandleFunc("/documents/delete", deleteDocumentHandler)
-	
+
 	// OIDC Authorization Code Flow with PKCE endpoints
 	mux.HandleFunc("/login", loginFlowHandler)      // Start OAuth2 flow
-	mux.HandleFunc("/callback", callbackHandler)   // Handle OAuth2 callback
+	mux.HandleFunc("/callback", callbackHandler)    // Handle OAuth2 callback
 	mux.HandleFunc("/test-token", testTokenHandler) // Test access tokens
-	
+
 	// Legacy endpoints (keeping for compatibility)
 	mux.HandleFunc("/call-b-user", callServiceBWithUserHandler)
 	mux.HandleFunc("/documents/user", documentWithUserHandler)
-	mux.HandleFunc("/callback", callbackHandler) // Add callback handler
 	mux.HandleFunc("/login-flow", loginFlowHandler) // Add login flow handler
-	mux.HandleFunc("/test-token", testTokenHandler) // Add test token handler
 
 	server := &http.Server{
 		Addr:      ":8080",

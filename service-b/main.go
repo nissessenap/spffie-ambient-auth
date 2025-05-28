@@ -231,7 +231,7 @@ func main() {
 	// Initialize OIDC token validator with PKCE provider
 	// Use the new PKCE client ID
 	authentikURL := "http://authentik-server.authentik.svc.cluster.local:80/application/o/spiffe-pkce-client/" // PKCE application issuer URL
-	pkceClientID := "spiffe-pkce-client"                                                                        // Use PKCE client ID
+	pkceClientID := "spiffe-pkce-client"                                                                       // Use PKCE client ID
 
 	log.Printf("Initializing OIDC validator with PKCE client ID: %s", pkceClientID)
 	tokenValidator, err := oidc.NewTokenValidator(ctx, authentikURL, pkceClientID)

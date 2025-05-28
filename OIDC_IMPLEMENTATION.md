@@ -7,12 +7,14 @@ This document explains the OIDC (OpenID Connect) implementation for secure authe
 We've implemented a complete OIDC solution that addresses both tasks from the prompt:
 
 ### 🎯 Task 1: Authorization Code Flow with PKCE (service-a)
+
 - **No client secret required** - Uses PKCE for security
 - **Redirects to Authentik login page** - Proper OAuth2 Authorization Code Flow
 - **Token exchange** - Exchanges authorization code for access/ID tokens
 - **JWT validation** - Validates returned tokens
 
 ### 🎯 Task 2: Backend Token Validation (service-b)
+
 - **Bearer token support** - Accepts `Authorization: Bearer <token>` headers
 - **JWT validation without client secret** - Uses JWKS for signature verification
 - **JWKS caching** - Automatic caching via OIDC library
@@ -65,12 +67,14 @@ We've implemented a complete OIDC solution that addresses both tasks from the pr
 **File**: `service-a/main.go`
 
 Key functions:
+
 - `generatePKCE()` - Generates code verifier and challenge
 - `loginFlowHandler()` - Initiates OAuth2 flow
 - `callbackHandler()` - Handles authorization code callback
 - `exchangeCodeForTokens()` - Exchanges code for tokens
 
 **Security Features**:
+
 - SHA256-based code challenge
 - State parameter for CSRF protection
 - Nonce for replay protection
@@ -81,11 +85,13 @@ Key functions:
 **File**: `oidc/validator.go`
 
 Key functions:
+
 - `ValidateAccessToken()` - Main token validation with JWKS
 - `NewTokenValidator()` - Creates validator with SPIFFE mTLS
 - `ExtractBearerToken()` - Extracts tokens from headers
 
 **Validation Features**:
+
 - JWKS-based signature verification
 - Automatic JWKS caching (1-hour TTL)
 - Standard claim validation (exp, aud, iss)
@@ -97,12 +103,14 @@ Key functions:
 ### Service-A (Client)
 
 #### 1. Start OIDC Login Flow
+
 ```bash
 GET /login
 Accept: application/json
 ```
 
 **Response**:
+
 ```json
 {
   "auth_url": "http://localhost:9000/application/o/authorize/?response_type=code&client_id=spiffe%3A%2F%2Fexample.org%2Fspiffe-services&redirect_uri=http%3A%2F%2Flocalhost%3A8081%2Fcallback&scope=openid+profile+email+groups&state=abc123&nonce=xyz789&code_challenge=def456&code_challenge_method=S256",
@@ -112,11 +120,13 @@ Accept: application/json
 ```
 
 #### 2. OAuth2 Callback
+
 ```bash
 GET /callback?code=AUTH_CODE&state=STATE
 ```
 
 **Response**:
+
 ```json
 {
   "message": "Login successful!",
@@ -128,6 +138,7 @@ GET /callback?code=AUTH_CODE&state=STATE
 ```
 
 #### 3. Test Token
+
 ```bash
 GET /test-token?token=ACCESS_TOKEN
 # OR
@@ -138,12 +149,14 @@ Authorization: Bearer ACCESS_TOKEN
 ### Service-B (Resource Server)
 
 #### 1. Hello Endpoint (with optional auth)
+
 ```bash
 GET /hello
 Authorization: Bearer ACCESS_TOKEN
 ```
 
 #### 2. Document Operations (requires auth)
+
 ```bash
 GET /documents/doc1      # View document
 PUT /documents/doc1      # Edit document  
@@ -156,6 +169,7 @@ Authorization: Bearer ACCESS_TOKEN
 ### 1. Setup
 
 First, ensure your environment is running:
+
 ```bash
 # Start the infrastructure
 ./setup-kind-infra.sh
@@ -227,17 +241,20 @@ The implementation includes comprehensive error handling:
 ## Security Features
 
 ### PKCE (Proof Key for Code Exchange)
+
 - **Code Verifier**: 32-byte random string, base64url-encoded
 - **Code Challenge**: SHA256 hash of verifier, base64url-encoded  
 - **Method**: S256 (SHA256)
 
 ### Token Validation
+
 - **Signature Verification**: Uses JWKS from Authentik
 - **Claim Validation**: Validates exp, aud, iss claims
 - **JWKS Caching**: 1-hour cache with automatic refresh
 - **SPIFFE mTLS**: Client authentication for JWKS fetching
 
 ### State Management
+
 - **CSRF Protection**: State parameter prevents CSRF attacks
 - **Nonce**: Prevents replay attacks
 - **Session Expiry**: PKCE sessions expire after 10 minutes
@@ -245,6 +262,7 @@ The implementation includes comprehensive error handling:
 ## Configuration
 
 ### OIDC Configuration
+
 ```go
 type OIDCConfig struct {
     AuthURL:     "http://localhost:9000/application/o/authorize/"
@@ -256,6 +274,7 @@ type OIDCConfig struct {
 ```
 
 ### Authentik Setup
+
 - **Client Type**: Public (no client secret)
 - **Grant Types**: Authorization Code + PKCE
 - **SPIFFE Integration**: Uses SPIFFE ID as client identifier

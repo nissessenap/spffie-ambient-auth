@@ -30,12 +30,12 @@ const userInfoKey contextKey = "userInfo"
 
 // TokenValidator handles OIDC token validation using SPIFFE identity
 type TokenValidator struct {
-	provider     *oidc.Provider
-	verifier     *oidc.IDTokenVerifier
-	clientID     string
-	spireSource  *workloadapi.X509Source
-	issuerURL    string
-	httpClient   *http.Client
+	provider    *oidc.Provider
+	verifier    *oidc.IDTokenVerifier
+	clientID    string
+	spireSource *workloadapi.X509Source
+	issuerURL   string
+	httpClient  *http.Client
 }
 
 // NewTokenValidator creates a new OIDC token validator using SPIFFE identity
@@ -128,7 +128,7 @@ func (tv *TokenValidator) ValidateAccessToken(ctx context.Context, tokenString s
 
 	// Verify standard claims
 	now := time.Now().Unix()
-	
+
 	// Check expiration
 	if claims.ExpiresAt > 0 && now > claims.ExpiresAt {
 		return nil, fmt.Errorf("token has expired")
