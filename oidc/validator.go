@@ -195,33 +195,15 @@ func (tv *TokenValidator) extractUserInfoFromClaims(claims jwt.MapClaims) (*User
 
 // getUserInfoFromToken validates an access token by calling the UserInfo endpoint
 func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken string) (*UserInfo, error) {
-	// Build UserInfo endpoint URL - For Authentik, UserInfo is at the OAuth provider level, not app level
-	// Convert issuer URL from: http://server/application/o/app-name/
-	// To UserInfo URL:       http://server/application/o/userinfo/
-	baseURL := strings.TrimSuffix(tv.issuerURL, "/")
-
-	// Remove the application-specific part and replace with userinfo
-	if strings.Contains(baseURL, "/application/o/") {
-		// Extract base up to /application/o/
-		parts := strings.Split(baseURL, "/application/o/")
-		if len(parts) >= 2 {
-			userInfoURL := parts[0] + "/application/o/userinfo/"
-			fmt.Printf("[oidc-debug] Converted issuer URL %s to UserInfo URL: %s\n", tv.issuerURL, userInfoURL)
-			baseURL = userInfoURL
-		} else {
-			// Fallback: just append userinfo
-			baseURL = baseURL + "/userinfo/"
-		}
-	} else {
-		// Standard OIDC: just append userinfo
-		baseURL = baseURL + "/userinfo/"
-	}
-
+	// Get UserInfo endpoint URL from the OIDC provider configuration
+	// This is more reliable than manually constructing the URL
+	userInfoURL := tv.provider.UserInfoEndpoint()
+	
 	// Debug logging
-	fmt.Printf("[oidc-debug] Calling UserInfo endpoint: %s\n", baseURL)
+	fmt.Printf("[oidc-debug] Using UserInfo endpoint from provider: %s\n", userInfoURL)
 
 	// Create request to UserInfo endpoint
-	req, err := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create UserInfo request: %w", err)
 	}
