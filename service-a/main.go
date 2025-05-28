@@ -634,8 +634,8 @@ func getUserToken(username, password string) (string, error) {
 	authentikURL := "https://authentik-server.authentik.svc.cluster.local:443"
 	tokenURL := fmt.Sprintf("%s/application/o/token/", authentikURL)
 
-	// Use the generic SPIFFE services client ID - configured as public client
-	clientID := "spiffe://example.org/spiffe-services"
+	// Use the PKCE client ID for consistency
+	clientID := "spiffe-pkce-client"
 
 	// Get our SPIFFE X.509 source for client authentication
 	ctx := context.Background()

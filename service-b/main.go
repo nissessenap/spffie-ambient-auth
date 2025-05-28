@@ -228,13 +228,13 @@ func main() {
 	}
 	log.Printf("Service-B running with SVID: %s", svid.ID)
 
-	// Initialize OIDC token validator with SPIFFE-based authentication
-	// Use the service's SPIFFE ID as the OIDC client ID
-	authentikURL := "http://authentik-server.authentik.svc.cluster.local:80/application/o/spiffe-services/" // SPIFFE application issuer URL
-	spiffeClientID := svid.ID.String()                                                                      // Use our SPIFFE ID as the client ID
+	// Initialize OIDC token validator with PKCE provider
+	// Use the new PKCE client ID
+	authentikURL := "http://authentik-server.authentik.svc.cluster.local:80/application/o/spiffe-pkce-client/" // PKCE application issuer URL
+	pkceClientID := "spiffe-pkce-client"                                                                        // Use PKCE client ID
 
-	log.Printf("Initializing OIDC validator with SPIFFE client ID: %s", spiffeClientID)
-	tokenValidator, err := oidc.NewTokenValidator(ctx, authentikURL, spiffeClientID)
+	log.Printf("Initializing OIDC validator with PKCE client ID: %s", pkceClientID)
+	tokenValidator, err := oidc.NewTokenValidator(ctx, authentikURL, pkceClientID)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize OIDC validator: %v", err)
 		log.Printf("Service will only support mTLS authentication")
