@@ -178,7 +178,7 @@ func withUserAuth(tokenValidator *oidc.TokenValidator, next http.HandlerFunc) ht
 			return
 		}
 
-		userInfo, err := tokenValidator.ValidateToken(r.Context(), token)
+		userInfo, err := tokenValidator.ValidateAccessToken(r.Context(), token)
 		if err != nil {
 			log.Printf("[auth] Token validation failed: %v", err)
 			http.Error(w, "Invalid authentication token", http.StatusUnauthorized)
@@ -187,8 +187,8 @@ func withUserAuth(tokenValidator *oidc.TokenValidator, next http.HandlerFunc) ht
 
 		log.Printf("[auth] Authenticated user: %s (%s)", userInfo.Username, userInfo.Email)
 
-		// Add user info to request context
-		ctx := context.WithValue(r.Context(), "userInfo", userInfo)
+		// Add user info to request context using OIDC package helper
+		ctx := oidc.SetUserInContext(r.Context(), userInfo)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
@@ -198,12 +198,12 @@ func withOptionalUserAuth(tokenValidator *oidc.TokenValidator, next http.Handler
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := oidc.ExtractBearerToken(r)
 		if token != "" {
-			userInfo, err := tokenValidator.ValidateToken(r.Context(), token)
+			userInfo, err := tokenValidator.ValidateAccessToken(r.Context(), token)
 			if err != nil {
 				log.Printf("[auth] Optional token validation failed: %v", err)
 			} else {
 				log.Printf("[auth] Authenticated user: %s (%s)", userInfo.Username, userInfo.Email)
-				ctx := context.WithValue(r.Context(), "userInfo", userInfo)
+				ctx := oidc.SetUserInContext(r.Context(), userInfo)
 				r = r.WithContext(ctx)
 			}
 		}

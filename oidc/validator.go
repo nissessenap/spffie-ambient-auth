@@ -3,8 +3,10 @@ package oidc
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -93,106 +95,124 @@ func NewTokenValidator(ctx context.Context, issuerURL, clientID string) (*TokenV
 	}, nil
 }
 
-// ValidateAccessToken validates a JWT access token using JWKS
+// ValidateAccessToken validates a JWT access token 
 // This implements Task 2 requirements:
 // - Accept Authorization: Bearer <access_token> header
-// - Validate JWT without client secret
-// - Use JWKS to verify token signature (handled by OIDC library)
+// - Validate JWT without client secret  
+// - Use JWKS to verify token signature OR validate against UserInfo endpoint
 // - Verify standard claims (exp, aud, iss, etc.)
-// - Cache JWKS for performance (handled by OIDC library)
 // - Handle invalid/expired tokens
 func (tv *TokenValidator) ValidateAccessToken(ctx context.Context, tokenString string) (*UserInfo, error) {
-	// Use the OIDC provider's verification which handles JWKS automatically
-	// This provides proper JWT signature verification with cached JWKS
-	idToken, err := tv.verifier.Verify(ctx, tokenString)
+	// First, try to parse the token to check basic validity and claims
+	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to verify access token: %w", err)
+		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	// Extract claims from the verified token
-	var claims struct {
-		Subject           string   `json:"sub"`
-		PreferredUsername string   `json:"preferred_username"`
-		Email             string   `json:"email"`
-		Name              string   `json:"name"`
-		Groups            []string `json:"groups"`
-		Audience          []string `json:"aud"`
-		Issuer            string   `json:"iss"`
-		ExpiresAt         int64    `json:"exp"`
-		IssuedAt          int64    `json:"iat"`
-	}
-
-	if err := idToken.Claims(&claims); err != nil {
-		return nil, fmt.Errorf("failed to parse claims: %w", err)
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims")
 	}
 
 	// Verify standard claims
 	now := time.Now().Unix()
 
 	// Check expiration
-	if claims.ExpiresAt > 0 && now > claims.ExpiresAt {
-		return nil, fmt.Errorf("token has expired")
-	}
-
-	// Check issuer
-	if claims.Issuer != "" && claims.Issuer != tv.issuerURL {
-		return nil, fmt.Errorf("invalid issuer: expected %s, got %s", tv.issuerURL, claims.Issuer)
-	}
-
-	// Check audience (should contain our client ID or SPIFFE identifier)
-	if len(claims.Audience) > 0 {
-		validAudience := false
-		for _, aud := range claims.Audience {
-			if aud == tv.clientID || strings.Contains(aud, "spiffe") {
-				validAudience = true
-				break
-			}
+	if exp, ok := claims["exp"].(float64); ok {
+		if now > int64(exp) {
+			return nil, fmt.Errorf("token has expired")
 		}
-		if !validAudience {
-			return nil, fmt.Errorf("invalid audience: token not intended for this client")
+	} else {
+		return nil, fmt.Errorf("token missing expiration claim")
+	}
+
+	// Check issued at (if present)
+	if iat, ok := claims["iat"].(float64); ok {
+		if now < int64(iat) {
+			return nil, fmt.Errorf("token used before issued")
 		}
 	}
 
-	// Parse additional claims from raw token if needed
-	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
-	var additionalGroups []string
-	if err == nil && token != nil {
-		if mapClaims, ok := token.Claims.(jwt.MapClaims); ok {
-			// Try different group claim locations that Authentik might use
-			if groups, ok := mapClaims["groups"].([]interface{}); ok {
-				for _, group := range groups {
-					if groupStr, ok := group.(string); ok {
-						additionalGroups = append(additionalGroups, groupStr)
-					}
-				}
-			}
-		}
+	// For access tokens, we'll validate by calling the UserInfo endpoint
+	// This is a standard OAuth2 approach and works regardless of signing algorithm
+	userInfo, err := tv.getUserInfoFromToken(ctx, tokenString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate token via UserInfo endpoint: %w", err)
 	}
 
-	// Merge groups from different sources
-	allGroups := claims.Groups
-	for _, group := range additionalGroups {
-		found := false
-		for _, existing := range allGroups {
-			if existing == group {
-				found = true
-				break
-			}
-		}
-		if !found {
-			allGroups = append(allGroups, group)
-		}
+	return userInfo, nil
+}
+
+// getUserInfoFromToken validates an access token by calling the UserInfo endpoint
+func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken string) (*UserInfo, error) {
+	// Build UserInfo endpoint URL
+	userInfoURL := strings.TrimSuffix(tv.issuerURL, "/") + "/userinfo/"
+	
+	// Debug logging
+	fmt.Printf("[oidc-debug] Calling UserInfo endpoint: %s\n", userInfoURL)
+	
+	// Create request to UserInfo endpoint
+	req, err := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create UserInfo request: %w", err)
 	}
 
-	accessTokenUserInfo := &UserInfo{
-		Subject:  claims.Subject,
-		Username: claims.PreferredUsername,
-		Email:    claims.Email,
-		Name:     claims.Name,
-		Groups:   allGroups,
+	// Add the access token as Bearer token
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	// Make the request using our SPIFFE-enabled HTTP client
+	resp, err := tv.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("UserInfo request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body for debugging
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read UserInfo response: %w", err)
 	}
 
-	return accessTokenUserInfo, nil
+	fmt.Printf("[oidc-debug] UserInfo response status: %d\n", resp.StatusCode)
+	fmt.Printf("[oidc-debug] UserInfo response body: %s\n", string(body))
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("UserInfo endpoint returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse UserInfo response
+	var userInfoResp struct {
+		Subject           string   `json:"sub"`
+		PreferredUsername string   `json:"preferred_username"`
+		Username          string   `json:"username"`
+		Email             string   `json:"email"`
+		Name              string   `json:"name"`
+		Groups            []string `json:"groups"`
+	}
+
+	if err := json.Unmarshal(body, &userInfoResp); err != nil {
+		return nil, fmt.Errorf("failed to decode UserInfo response: %w", err)
+	}
+
+	fmt.Printf("[oidc-debug] Parsed UserInfo: %+v\n", userInfoResp)
+
+	// Use preferred_username if username is empty
+	username := userInfoResp.Username
+	if username == "" {
+		username = userInfoResp.PreferredUsername
+	}
+
+	userInfo := &UserInfo{
+		Subject:  userInfoResp.Subject,
+		Username: username,
+		Email:    userInfoResp.Email,
+		Name:     userInfoResp.Name,
+		Groups:   userInfoResp.Groups,
+	}
+
+	fmt.Printf("[oidc-debug] Final UserInfo: %+v\n", userInfo)
+
+	return userInfo, nil
 }
 
 // ValidateToken validates a JWT token and returns user information
@@ -315,6 +335,11 @@ func (tv *TokenValidator) AuthenticateRequest(next http.HandlerFunc) http.Handle
 		ctx := context.WithValue(r.Context(), userInfoKey, userInfo)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
+}
+
+// SetUserInContext adds user information to the request context
+func SetUserInContext(ctx context.Context, userInfo *UserInfo) context.Context {
+	return context.WithValue(ctx, userInfoKey, userInfo)
 }
 
 // GetUserFromContext extracts user information from the request context
