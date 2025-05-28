@@ -95,49 +95,99 @@ func NewTokenValidator(ctx context.Context, issuerURL, clientID string) (*TokenV
 	}, nil
 }
 
-// ValidateAccessToken validates a JWT access token 
+// ValidateAccessToken validates an OAuth2 access token by parsing JWT claims directly
 // This implements Task 2 requirements:
 // - Accept Authorization: Bearer <access_token> header
-// - Validate JWT without client secret  
-// - Use JWKS to verify token signature OR validate against UserInfo endpoint
+// - Validate JWT signature using JWKS
 // - Verify standard claims (exp, aud, iss, etc.)
+// - Extract user information from claims
 // - Handle invalid/expired tokens
 func (tv *TokenValidator) ValidateAccessToken(ctx context.Context, tokenString string) (*UserInfo, error) {
-	// First, try to parse the token to check basic validity and claims
-	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
+	// Use the OIDC verifier to validate the JWT signature and claims
+	// This will verify the signature using JWKS and check standard claims
+	idToken, err := tv.verifier.Verify(ctx, tokenString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %w", err)
+		return nil, fmt.Errorf("failed to verify access token signature and claims: %w", err)
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
+	// Extract all claims from the token
+	var claims jwt.MapClaims
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, fmt.Errorf("failed to extract claims from token: %w", err)
+	}
+
+	fmt.Printf("[oidc-debug] Access token claims: %+v\n", claims)
+
+	// Extract user information from the JWT claims
+	userInfo, err := tv.extractUserInfoFromClaims(claims)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract user info from claims: %w", err)
+	}
+
+	fmt.Printf("[oidc-debug] Extracted UserInfo from JWT: %+v\n", userInfo)
+
+	// If user profile information is missing from JWT claims (common with access tokens),
+	// fall back to calling the UserInfo endpoint
+	if userInfo.Username == "" || len(userInfo.Groups) == 0 {
+		fmt.Printf("[oidc-debug] User profile data missing from JWT, calling UserInfo endpoint\n")
+		userInfoFromEndpoint, err := tv.getUserInfoFromToken(ctx, tokenString)
+		if err != nil {
+			fmt.Printf("[oidc-debug] UserInfo endpoint call failed: %v, using JWT claims only\n", err)
+			// Continue with JWT-only userInfo
+		} else {
+			// Merge data from UserInfo endpoint with JWT claims
+			fmt.Printf("[oidc-debug] Successfully got user info from endpoint, merging data\n")
+			userInfo.Username = userInfoFromEndpoint.Username
+			userInfo.Email = userInfoFromEndpoint.Email
+			userInfo.Name = userInfoFromEndpoint.Name
+			userInfo.Groups = userInfoFromEndpoint.Groups
+		}
+	}
+
+	return userInfo, nil
+}
+
+// extractUserInfoFromClaims extracts user information from JWT claims
+func (tv *TokenValidator) extractUserInfoFromClaims(claims jwt.MapClaims) (*UserInfo, error) {
+	// Extract subject (required)
+	sub, ok := claims["sub"].(string)
 	if !ok {
-		return nil, fmt.Errorf("invalid token claims")
+		return nil, fmt.Errorf("missing or invalid 'sub' claim")
 	}
 
-	// Verify standard claims
-	now := time.Now().Unix()
+	// Extract other user information from claims
+	userInfo := &UserInfo{
+		Subject: sub,
+	}
 
-	// Check expiration
-	if exp, ok := claims["exp"].(float64); ok {
-		if now > int64(exp) {
-			return nil, fmt.Errorf("token has expired")
+	// Extract username (try multiple claim names)
+	if username, ok := claims["preferred_username"].(string); ok {
+		userInfo.Username = username
+	} else if username, ok := claims["username"].(string); ok {
+		userInfo.Username = username
+	}
+
+	// Extract email
+	if email, ok := claims["email"].(string); ok {
+		userInfo.Email = email
+	}
+
+	// Extract name
+	if name, ok := claims["name"].(string); ok {
+		userInfo.Name = name
+	}
+
+	// Extract groups (may be array of strings or space-separated string)
+	if groups, ok := claims["groups"].([]interface{}); ok {
+		userInfo.Groups = make([]string, len(groups))
+		for i, group := range groups {
+			if groupStr, ok := group.(string); ok {
+				userInfo.Groups[i] = groupStr
+			}
 		}
-	} else {
-		return nil, fmt.Errorf("token missing expiration claim")
-	}
-
-	// Check issued at (if present)
-	if iat, ok := claims["iat"].(float64); ok {
-		if now < int64(iat) {
-			return nil, fmt.Errorf("token used before issued")
-		}
-	}
-
-	// For access tokens, we'll validate by calling the UserInfo endpoint
-	// This is a standard OAuth2 approach and works regardless of signing algorithm
-	userInfo, err := tv.getUserInfoFromToken(ctx, tokenString)
-	if err != nil {
-		return nil, fmt.Errorf("failed to validate token via UserInfo endpoint: %w", err)
+	} else if groupsStr, ok := claims["groups"].(string); ok {
+		// Handle space-separated groups
+		userInfo.Groups = strings.Fields(groupsStr)
 	}
 
 	return userInfo, nil
@@ -145,14 +195,33 @@ func (tv *TokenValidator) ValidateAccessToken(ctx context.Context, tokenString s
 
 // getUserInfoFromToken validates an access token by calling the UserInfo endpoint
 func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken string) (*UserInfo, error) {
-	// Build UserInfo endpoint URL
-	userInfoURL := strings.TrimSuffix(tv.issuerURL, "/") + "/userinfo/"
-	
+	// Build UserInfo endpoint URL - For Authentik, UserInfo is at the OAuth provider level, not app level
+	// Convert issuer URL from: http://server/application/o/app-name/
+	// To UserInfo URL:       http://server/application/o/userinfo/
+	baseURL := strings.TrimSuffix(tv.issuerURL, "/")
+
+	// Remove the application-specific part and replace with userinfo
+	if strings.Contains(baseURL, "/application/o/") {
+		// Extract base up to /application/o/
+		parts := strings.Split(baseURL, "/application/o/")
+		if len(parts) >= 2 {
+			userInfoURL := parts[0] + "/application/o/userinfo/"
+			fmt.Printf("[oidc-debug] Converted issuer URL %s to UserInfo URL: %s\n", tv.issuerURL, userInfoURL)
+			baseURL = userInfoURL
+		} else {
+			// Fallback: just append userinfo
+			baseURL = baseURL + "/userinfo/"
+		}
+	} else {
+		// Standard OIDC: just append userinfo
+		baseURL = baseURL + "/userinfo/"
+	}
+
 	// Debug logging
-	fmt.Printf("[oidc-debug] Calling UserInfo endpoint: %s\n", userInfoURL)
-	
+	fmt.Printf("[oidc-debug] Calling UserInfo endpoint: %s\n", baseURL)
+
 	// Create request to UserInfo endpoint
-	req, err := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", baseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create UserInfo request: %w", err)
 	}
