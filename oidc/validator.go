@@ -211,8 +211,20 @@ func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken 
 	// Add the access token as Bearer token
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
 
-	// Make the request using our SPIFFE-enabled HTTP client
-	resp, err := tv.httpClient.Do(req)
+	// Create a simple HTTP client without SPIFFE mTLS for UserInfo endpoint
+	// UserInfo endpoints expect Bearer token authentication, not client certificates
+	simpleClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				// Skip TLS verification for development
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
+	// Make the request using a simple HTTP client (no SPIFFE mTLS)
+	resp, err := simpleClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("UserInfo request failed: %w", err)
 	}

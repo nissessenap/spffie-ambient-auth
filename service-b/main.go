@@ -229,9 +229,9 @@ func main() {
 	log.Printf("Service-B running with SVID: %s", svid.ID)
 
 	// Initialize OIDC token validator with PKCE provider
-	// Use the new PKCE client ID
-	authentikURL := "http://authentik-server.authentik.svc.cluster.local:80/application/o/spiffe-pkce-app/" // PKCE application issuer URL
-	pkceClientID := "spiffe-pkce-client"                                                                    // Use PKCE client ID
+	// Use the new PKCE client ID and updated application slug
+	authentikURL := "http://authentik-server.authentik.svc.cluster.local:80/application/o/spiffe-pkce-app-v2/" // Updated PKCE application issuer URL
+	pkceClientID := "spiffe-pkce-client"                                                                       // Use PKCE client ID
 
 	log.Printf("Initializing OIDC validator with PKCE client ID: %s", pkceClientID)
 	tokenValidator, err := oidc.NewTokenValidator(ctx, authentikURL, pkceClientID)

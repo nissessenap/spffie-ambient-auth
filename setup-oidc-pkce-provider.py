@@ -91,6 +91,36 @@ def setup_pkce_oidc_provider():
                     print(f"[!] Warning: Failed to delete provider: {delete_response.status_code}")
                 break
         
+        # Get available scope mappings first
+        scope_mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/scope/")
+        if scope_mappings_response.status_code != 200:
+            print(f"[!] Warning: Failed to get scope mappings: {scope_mappings_response.status_code}")
+            print("[+] Continuing without custom scope mappings...")
+            scope_mapping_ids = []
+        else:
+            scope_mappings = scope_mappings_response.json()
+            
+            # Find the scope mappings we need
+            required_scopes = ["openid", "email", "profile", "offline_access"]
+            scope_mapping_ids = []
+            
+            for mapping in scope_mappings.get('results', []):
+                scope_name = mapping.get('scope_name', '').lower()
+                if scope_name in required_scopes:
+                    scope_mapping_ids.append(mapping['pk'])
+                    print(f"[+] Found scope mapping: {mapping['name']} ({scope_name})")
+            
+            # Also look for groups scope mapping (might be named differently)
+            for mapping in scope_mappings.get('results', []):
+                name = mapping.get('name', '').lower()
+                scope_name = mapping.get('scope_name', '').lower()
+                if 'group' in name or 'group' in scope_name:
+                    scope_mapping_ids.append(mapping['pk'])
+                    print(f"[+] Found groups scope mapping: {mapping['name']} ({scope_name})")
+            
+            if not scope_mapping_ids:
+                print("[!] Warning: No scope mappings found - tokens may not include user profile data")
+        
         # Create new PKCE-enabled OAuth2 provider
         provider_data = {
             "name": provider_name,
@@ -121,6 +151,10 @@ def setup_pkce_oidc_provider():
             "refresh_token_validity": "days=30",   # Refresh tokens valid for 30 days
         }
         
+        # Add scope mappings if we found any
+        if scope_mapping_ids:
+            provider_data["property_mappings"] = scope_mapping_ids
+        
         print("[+] Creating PKCE OAuth2 provider...")
         provider_response = session.post(
             f"{authentik_url}/api/v3/providers/oauth2/",
@@ -138,7 +172,7 @@ def setup_pkce_oidc_provider():
         
         # Create application
         app_name = "spiffe-pkce-app"
-        app_slug = "spiffe-pkce-app"
+        app_slug = "spiffe-pkce-app-v2"  # Use unique slug to avoid conflicts
         
         # Check if application already exists
         apps_response = session.get(f"{authentik_url}/api/v3/core/applications/")
@@ -202,11 +236,13 @@ def setup_pkce_oidc_provider():
             print("  - Grant Type: authorization_code")
             print("  - PKCE: Required (code_challenge_method=S256)")
             print("  - Client Authentication: None (public client)")
-            print("  - Scopes: openid profile email groups")
+            print("  - Scopes: openid profile email groups offline_access")
+            print("  - Scope mappings configured for user profile data")
             print("")
             print("📋 Usage in service-a:")
             print(f"  - Update getOIDCConfig() to use client_id: '{client_id}'")
             print(f"  - Update issuer URL to: '{authentik_url}/application/o/{app_slug}/'")
+            print("  - Ensure scopes include: 'openid profile email groups offline_access'")
             print("")
             print("✅ Ready for Authorization Code Flow with PKCE!")
             return True
