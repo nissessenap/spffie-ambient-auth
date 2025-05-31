@@ -307,6 +307,11 @@ class AuthentikSetup:
             "redirect_uris": formatted_uris,
             "include_groups": True,
             "include_group_membership": True,
+            "sub_mode": "user_username",
+            "issuer_mode": "per_provider",
+            "jwks_sources": [],
+            "access_token_validity": "minutes=5",
+            "refresh_token_validity": "days=30",
         }
 
         response = requests.post(
