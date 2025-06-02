@@ -89,6 +89,9 @@ To login
 
 ```shell
 kubectl port-forward -n authentik svc/authentik-server 9000:80 &
+# If you whipe the install
+# go to, and create a new token.
+http://localhost:9000/if/flow/initial-setup/
 username: akadmin
 password: PleaseGenerateASecureKey
 ```
