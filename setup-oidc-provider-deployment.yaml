@@ -1,10 +1,19 @@
-apiVersion: batch/v1
-kind: Job
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: setup-oidc-provider
   namespace: authentik
+  labels:
+    app: setup-oidc-provider
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: setup-oidc-provider
   template:
+    metadata:
+      labels:
+        app: setup-oidc-provider
     spec:
       containers:
       - name: setup-oidc
@@ -14,20 +23,7 @@ spec:
           value: BZ6KJNzkCWzXORW2KsjTZXN8zC1VnHJYuLSaKLYf3zQzU5raikkhwiDHkI90 # Make some random scanner scream :D
         - name: AUTHENTIK_BASE_URL
           value: "http://authentik-server.authentik.svc.cluster.local:80"
-        command: ["python", "/app/setup-oidc-pkce-provider.py"]
+        command: ["/bin/sh"]
+        tty: true
+        #command: ["python", "/app/setup-oidc-pkce-provider.py"]
         imagePullPolicy: IfNotPresent
-      restartPolicy: OnFailure
-      # Add service account if needed for cluster access
-      serviceAccountName: default
-  backoffLimit: 3
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: authentik-setup-secret
-  namespace: authentik
-type: Opaque
-data:
-  # Replace with actual base64 encoded Authentik token
-  # echo -n "your-authentik-token" | base64
-  token: ""

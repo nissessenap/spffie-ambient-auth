@@ -15,8 +15,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-SERVICE_A_URL="http://localhost:8081"
-SERVICE_B_URL="https://service-b:8080"
+SERVICE_A_URL="http://service-a.app.svc.cluster.local:8081"
+SERVICE_B_URL="https://service-b.app.svc.cluster.local:8080"
 
 echo -e "${BLUE}Step 1: Starting OIDC login flow...${NC}"
 echo "Requesting authorization URL from service-a..."
