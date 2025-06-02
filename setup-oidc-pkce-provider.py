@@ -16,8 +16,9 @@ import sys
 def setup_pkce_oidc_provider():
     """
     Create a fresh OIDC provider configured for Authorization Code Flow with PKCE
+    Uses cluster-internal addressing for Kubernetes deployment
     """
-    authentik_url = "http://localhost:9000"
+    authentik_url = "http://authentik-server.authentik.svc.cluster.local:80"
     authentik_token = os.getenv("AUTHENTIK_TOKEN")
     
     if not authentik_token:
@@ -153,15 +154,11 @@ def setup_pkce_oidc_provider():
             "redirect_uris": [
                 {
                     "matching_mode": "strict",
-                    "url": "http://localhost:8081/callback"
+                    "url": "http://service-a.default.svc.cluster.local:8080/callback"
                 },
                 {
                     "matching_mode": "strict", 
-                    "url": "https://service-a:8080/callback"
-                },
-                {
-                    "matching_mode": "strict",
-                    "url": "http://localhost:3000/callback"
+                    "url": "http://service-b.default.svc.cluster.local:8081/callback"
                 }
             ],
             "sub_mode": "hashed_user_id",
@@ -248,16 +245,20 @@ def setup_pkce_oidc_provider():
             print(f"Client ID: {client_id}")
             print(f"Client Type: public (no client secret)")
             print("")
-            print("🌐 OIDC Endpoints:")
+            print("🌐 OIDC Endpoints (Cluster-Internal):")
             print(f"Issuer URL: {authentik_url}/application/o/{app_slug}/")
             print(f"Authorization URL: {authentik_url}/application/o/authorize/")
             print(f"Token URL: {authentik_url}/application/o/token/")
             print(f"UserInfo URL: {authentik_url}/application/o/userinfo/")
             print(f"JWKS URL: {authentik_url}/application/o/{app_slug}/jwks/")
             print("")
-            print("🔄 Redirect URIs:")
+            print("🔄 Redirect URIs (Cluster-Internal):")
             for uri_obj in provider_data["redirect_uris"]:
                 print(f"  - {uri_obj['url']}")
+            print("")
+            print("⚠️  IMPORTANT: Authentik system settings configuration:")
+            print(f"   - Domain: authentik-server.authentik.svc.cluster.local:80")
+            print(f"   - This ensures OIDC discovery returns cluster-internal URLs")
             print("")
             print("⚙️  Flow Configuration:")
             print("  - Grant Type: authorization_code")
@@ -266,12 +267,13 @@ def setup_pkce_oidc_provider():
             print("  - Scopes: openid profile email groups offline_access")
             print("  - Scope mappings configured for user profile data")
             print("")
-            print("📋 Usage in service-a:")
-            print(f"  - Update getOIDCConfig() to use client_id: '{client_id}'")
-            print(f"  - Update issuer URL to: '{authentik_url}/application/o/{app_slug}/'")
+            print("📋 Usage in services:")
+            print(f"  - Client ID: '{client_id}'")
+            print(f"  - Issuer URL: '{authentik_url}/application/o/{app_slug}/'")
             print("  - Ensure scopes include: 'openid profile email groups offline_access'")
+            print("  - All services must use cluster-internal addressing")
             print("")
-            print("✅ Ready for Authorization Code Flow with PKCE!")
+            print("✅ Ready for cluster-internal Authorization Code Flow with PKCE!")
             return True
         else:
             print(f"[✗] Failed to create application: {app_response.status_code}")
@@ -284,22 +286,24 @@ def setup_pkce_oidc_provider():
 
 
 if __name__ == "__main__":
-    print("🚀 Setting up Authorization Code Flow with PKCE")
-    print("=" * 50)
+    print("🚀 Setting up Cluster-Internal Authorization Code Flow with PKCE")
+    print("=" * 60)
     print("This creates a clean OIDC provider configured for:")
     print("- Authorization Code Flow with PKCE (RFC 7636)")
     print("- Public clients (no client secrets)")
-    print("- SPIFFE service integration")
-    print("=" * 50)
+    print("- Cluster-internal service integration")
+    print("- Authentik at authentik-server.authentik.svc.cluster.local:80")
+    print("=" * 60)
     
     success = setup_pkce_oidc_provider()
     if success:
-        print("\n✅ PKCE OIDC setup completed successfully!")
+        print("\n✅ Cluster-internal PKCE OIDC setup completed successfully!")
         print("\n📝 Next steps:")
-        print("1. Update service-a configuration with new client_id")
-        print("2. Test the authorization flow: /login endpoint")
-        print("3. Verify token validation in service-b")
-        print("4. Test end-to-end document access with user authentication")
+        print("1. Update service configurations with new client_id and cluster-internal URLs")
+        print("2. Ensure Authentik system settings domain is set to cluster-internal address")
+        print("3. Test the authorization flow from within the cluster")
+        print("4. Verify token validation between services")
+        print("5. Test end-to-end document access with user authentication")
     else:
-        print("\n❌ Failed to setup PKCE OIDC provider")
+        print("\n❌ Failed to setup cluster-internal PKCE OIDC provider")
         sys.exit(1)
