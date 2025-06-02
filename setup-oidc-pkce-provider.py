@@ -92,14 +92,14 @@ def setup_pkce_oidc_provider():
                 break
         
         # Get available scope mappings first
-        scope_mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/scope/")
+        scope_mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/source/oauth/")
         if scope_mappings_response.status_code != 200:
             print(f"[!] Warning: Failed to get scope mappings: {scope_mappings_response.status_code}")
             print("[+] Continuing without custom scope mappings...")
             scope_mapping_ids = []
         else:
             scope_mappings = scope_mappings_response.json()
-            
+            print(f"[+] Found scope mappings: {scope_mappings_response.json()}")          
             # Find the scope mappings we need
             required_scopes = ["openid", "email", "profile", "offline_access"]
             scope_mapping_ids = []
