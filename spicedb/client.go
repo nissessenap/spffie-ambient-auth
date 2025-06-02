@@ -68,27 +68,6 @@ func (c *Client) CheckPermission(ctx context.Context, resource string, permissio
 	return resp.Permissionship == pb.CheckPermissionResponse_PERMISSIONSHIP_HAS_PERMISSION, nil
 }
 
-// GetServiceFromSVID extracts the service name from a SPIFFE ID
-// Example: spiffe://example.org/ns/app/sa/service-a -> service-a
-func GetServiceFromSVID(svidString string) string {
-	// This is a simplified implementation - in production, you would want to parse the SVID more carefully
-	parts := []rune(svidString)
-	lastSlashIndex := -1
-
-	for i := len(parts) - 1; i >= 0; i-- {
-		if parts[i] == '/' {
-			lastSlashIndex = i
-			break
-		}
-	}
-
-	if lastSlashIndex >= 0 && lastSlashIndex < len(parts)-1 {
-		return string(parts[lastSlashIndex+1:])
-	}
-
-	return ""
-}
-
 // GetSVIDInSSpaceDBFormat converts a SPIFFE ID to the format used by SpiceDB schema
 // Example: spiffe://example.org/ns/app/sa/service-a ->  spiffe-example-org-ns-app-sa-service-a
 func GetSVIDInSSpaceDBFormat(svidString string) (string, error) {
