@@ -2,11 +2,16 @@ module github.com/NissesSenap/spffie-ambient-auth/service-a
 
 go 1.24.1
 
-require github.com/spiffe/go-spiffe/v2 v2.5.0
+require (
+	github.com/coreos/go-oidc/v3 v3.9.0
+	github.com/spiffe/go-spiffe/v2 v2.5.0
+	golang.org/x/oauth2 v0.24.0
+)
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/go-jose/go-jose/v3 v3.0.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.4 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect

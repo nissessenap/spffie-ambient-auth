@@ -1,0 +1,12 @@
+[[source]]
+url = "https://oauth2accesstoken@pypi.kognic.io/simple"
+verify_ssl = true
+name = "pip_conf_index_global"
+
+[packages]
+requests = ">=2.31.0"
+
+[dev-packages]
+
+[requires]
+python_version = "3.13"
