@@ -154,11 +154,11 @@ def setup_pkce_oidc_provider():
             "redirect_uris": [
                 {
                     "matching_mode": "strict",
-                    "url": "http://service-a.default.svc.cluster.local:8080/callback"
+                    "url": "http://service-a.app.svc.cluster.local:8081/callback"
                 },
                 {
                     "matching_mode": "strict", 
-                    "url": "http://service-b.default.svc.cluster.local:8081/callback"
+                    "url": "http://service-b.app.svc.cluster.local:8080/callback"
                 }
             ],
             "sub_mode": "hashed_user_id",

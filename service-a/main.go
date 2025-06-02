@@ -83,11 +83,11 @@ func getOIDCConfig() *OIDCConfig {
 	serviceBaseURL := "http://authentik-server.authentik.svc.cluster.local:80" // For service-to-service calls
 
 	return &OIDCConfig{
-		AuthURL:     serviceBaseURL + "/application/o/authorize/", // User browser access
-		TokenURL:    serviceBaseURL + "/application/o/token/",     // Service-to-service access
-		ClientID:    "spiffe-pkce-client",                         // Updated to use the new PKCE client ID
-		RedirectURI: "http://localhost:8081/callback",             // Plain HTTP for demo
-		Scope:       "openid profile email groups offline_access", // Include offline_access for user profile data
+		AuthURL:     serviceBaseURL + "/application/o/authorize/",           // User browser access
+		TokenURL:    serviceBaseURL + "/application/o/token/",               // Service-to-service access
+		ClientID:    "spiffe-pkce-client",                                   // Updated to use the new PKCE client ID
+		RedirectURI: "http://service-a.app.svc.cluster.local:8081/callback", // Cluster-internal redirect URI
+		Scope:       "openid profile email groups offline_access",           // Include offline_access for user profile data
 	}
 }
 
