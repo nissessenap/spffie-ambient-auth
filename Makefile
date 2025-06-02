@@ -1,10 +1,10 @@
-
 # Build Docker images for service-a and service-b
 SERVICE_A_IMAGE ?= service-a:latest
 SERVICE_B_IMAGE ?= service-b:latest
+OIDC_SETUP_IMAGE ?= oidc-setup:latest
 
 
-.PHONY: build-service-a build-service-b build-all load-service-a load-service-b load-all
+.PHONY: build-service-a build-service-b build-oidc-setup build-all load-service-a load-service-b load-oidc-setup load-all
 
 build-service-a:
 	docker build -t $(SERVICE_A_IMAGE) ./service-a
@@ -17,6 +17,12 @@ build-service-b:
 
 load-service-b: build-service-b
 	kind load docker-image $(SERVICE_B_IMAGE) --name spffie-demo
+
+build-oidc-setup:
+	docker build -t $(OIDC_SETUP_IMAGE) -f ./Dockerfile.oidc-setup .
+
+load-oidc-setup: build-oidc-setup
+	kind load docker-image $(OIDC_SETUP_IMAGE) --name spffie-demo
 
 build-all: build-service-a build-service-b
 	echo "Built both service-a and service-b images."
