@@ -91,32 +91,50 @@ def setup_pkce_oidc_provider():
                     print(f"[!] Warning: Failed to delete provider: {delete_response.status_code}")
                 break
         
-        # Get available scope mappings first
-        scope_mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/source/oauth/")
+        # Get available OAuth2 provider property mappings (not OAuth source mappings)
+        scope_mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/oauth2/")
         if scope_mappings_response.status_code != 200:
-            print(f"[!] Warning: Failed to get scope mappings: {scope_mappings_response.status_code}")
+            print(f"[!] Warning: Failed to get OAuth2 provider mappings: {scope_mappings_response.status_code}")
             print("[+] Continuing without custom scope mappings...")
             scope_mapping_ids = []
         else:
             scope_mappings = scope_mappings_response.json()
-            print(f"[+] Found scope mappings: {scope_mappings_response.json()}")          
+            print(f"[+] Found OAuth2 provider mappings: {len(scope_mappings.get('results', []))} total")
+            
             # Find the scope mappings we need
-            required_scopes = ["openid", "email", "profile", "offline_access"]
+            required_scopes = ["openid", "email", "profile", "offline_access", "groups"]
             scope_mapping_ids = []
             
             for mapping in scope_mappings.get('results', []):
                 scope_name = mapping.get('scope_name', '').lower()
                 if scope_name in required_scopes:
                     scope_mapping_ids.append(mapping['pk'])
-                    print(f"[+] Found scope mapping: {mapping['name']} ({scope_name})")
+                    print(f"[+] Found scope mapping: {mapping['name']} -> scope '{scope_name}'")
             
-            # Also look for groups scope mapping (might be named differently)
-            for mapping in scope_mappings.get('results', []):
-                name = mapping.get('name', '').lower()
-                scope_name = mapping.get('scope_name', '').lower()
-                if 'group' in name or 'group' in scope_name:
+            # Check if we're missing the groups scope mapping
+            has_groups_scope = any(mapping.get('scope_name', '').lower() == 'groups' 
+                                 for mapping in scope_mappings.get('results', []))
+            
+            if not has_groups_scope:
+                print("[+] Groups scope mapping not found, creating it...")
+                groups_mapping = {
+                    "name": "Groups Scope Mapping",
+                    "expression": "[g.name for g in user.groups.all()]",
+                    "scope_name": "groups"
+                }
+                
+                create_response = session.post(
+                    f"{authentik_url}/api/v3/propertymappings/oauth2/",
+                    json=groups_mapping
+                )
+                
+                if create_response.status_code == 201:
+                    mapping = create_response.json()
                     scope_mapping_ids.append(mapping['pk'])
-                    print(f"[+] Found groups scope mapping: {mapping['name']} ({scope_name})")
+                    print(f"[✓] Created groups scope mapping: {mapping['name']} -> scope 'groups'")
+                else:
+                    print(f"[!] Warning: Failed to create groups mapping: {create_response.status_code}")
+                    print(f"Response: {create_response.text}")
             
             if not scope_mapping_ids:
                 print("[!] Warning: No scope mappings found - tokens may not include user profile data")
