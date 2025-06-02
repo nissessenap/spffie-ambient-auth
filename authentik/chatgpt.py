@@ -2,17 +2,16 @@ import requests
 import os
 
 # === CONFIG ===
-BASE_URL = "http://localhost:9000"  # 🔁 Replace with your Authentik URL
-AUTHENTIK_TOKEN = os.getenv("AUTHENTIK_TOKEN")
+BASE_URL = "http://localhost:9000"
+authentik_token = os.getenv("AUTHENTIK_TOKEN")
+
+
 HEADERS = {
-    "Authorization": f"Bearer {AUTHENTIK_TOKEN}",
+    "Authorization": f"Bearer {authentik_token}",
     "Content-Type": "application/json",
 }
 
 def find_resource(url, search_key):
-    """
-    Find a resource by name/slug/username. Returns the first match or None.
-    """
     resp = requests.get(f"{url}?search={search_key}", headers=HEADERS)
     if resp.status_code != 200:
         raise Exception(f"❌ Failed to search {url}: {resp.text}")
@@ -20,10 +19,6 @@ def find_resource(url, search_key):
     return results[0] if results else None
 
 def create_or_update(url, search_key, payload, label):
-    """
-    If a resource with name/slug/username == search_key exists, PATCH it; otherwise, POST it.
-    Returns the JSON body of the existing/newly created resource.
-    """
     existing = find_resource(url, search_key)
     if existing:
         resource_id = existing["pk"]
@@ -39,85 +34,89 @@ def create_or_update(url, search_key, payload, label):
         print(f"✅ Created {label}")
         return resp.json()
 
-# === STEP 1: Groups ===
+# === Step 1: Groups ===
 group_ids = {}
-for group_name in ["admin", "engineer"]:
-    payload = {"name": group_name}
-    group = create_or_update(
+for group in ["admin", "engineer"]:
+    result = create_or_update(
         f"{BASE_URL}/api/v3/core/groups/",
-        group_name,
-        payload,
-        f"group '{group_name}'"
+        group,
+        {"name": group},
+        f"group '{group}'"
     )
-    group_ids[group_name] = group["pk"]
+    group_ids[group] = result["pk"]
 
-# === STEP 2: Users ===
+# === Step 2: Users ===
 users = [
     {"username": "alice", "password": "alice123", "groups": [group_ids["admin"]]},
     {"username": "bob", "password": "bob123", "groups": [group_ids["engineer"]]},
 ]
 for user in users:
-    payload = {
-        "username": user["username"],
-        "name": user["username"].capitalize(),
-        "password": user["password"],
-        "is_active": True,
-        "groups": user["groups"],
-    }
     create_or_update(
         f"{BASE_URL}/api/v3/core/users/",
         user["username"],
-        payload,
+        {
+            "username": user["username"],
+            "name": user["username"].capitalize(),
+            "password": user["password"],
+            "is_active": True,
+            "groups": user["groups"],
+        },
         f"user '{user['username']}'"
     )
 
-# === STEP 3: Property Mapping (groups) ===
-# ⇨ NOTE THE CORRECT ENDPOINT HERE:
-mapping_url = f"{BASE_URL}/api/v3/propertymappings/source/oauth/"
-
-mapping_payload = {
-    "name": "user_groups",
-    "expression": "[g.name for g in user.groups.all()]",
-    "claim": "groups",
-    "mapping_type": "oidc",
-}
+# === Step 3: Property Mapping (OAuth2 group claim) ===
 mapping = create_or_update(
-    mapping_url,
+    f"{BASE_URL}/api/v3/propertymappings/source/oauth/",
     "user_groups",
-    mapping_payload,
+    {
+        "name": "user_groups",
+        "expression": "[g.name for g in user.groups.all()]",
+        "claim": "groups",
+        "mapping_type": "oidc",
+    },
     "property mapping"
 )
 mapping_id = mapping["pk"]
 
-# === STEP 4: OIDC Provider (PKCE Public) ===
-provider_payload = {
-    "name": "my-public-oidc-provider",
-    "authorization_flow": "default-source-authorization-flow",
-    "redirect_uris": ["http://localhost:3000/callback"],
-    "client_type": "public",
-    "client_id": "my-public-client-id",
-    "property_mappings": [mapping_id],
-}
+# === Step 4: Find required flows ===
+def get_flow_by_slug(slug):
+    flow = find_resource(f"{BASE_URL}/api/v3/flows/instances/", slug)
+    if not flow:
+        raise Exception(f"❌ Could not find flow with slug '{slug}'")
+    return flow["pk"]
+
+auth_flow_id = get_flow_by_slug("default-source-authentication-flow")
+invalidation_flow_id = get_flow_by_slug("default-invalidation-flow")
+
+# === Step 5: Create OIDC Provider ===
 provider = create_or_update(
-    f"{BASE_URL}/api/v3/providers/oidc/",
+    f"{BASE_URL}/api/v3/providers/oauth2/",
     "my-public-oidc-provider",
-    provider_payload,
+    {
+        "name": "my-public-oidc-provider",
+        "authorization_flow": auth_flow_id,
+        "invalidation_flow": invalidation_flow_id,
+        "client_type": "public",
+        "redirect_uris": [{"matching_mode": "strict", "url": "http://localhost:3000/callback"}],
+        "property_mappings": [mapping_id],
+        "sub_mode": "user_username",
+        "issuer_mode": "inherit",
+    },
     "OIDC provider"
 )
 provider_id = provider["pk"]
 
-# === STEP 5: Application ===
-app_payload = {
-    "name": "My Test App",
-    "slug": "my-test-app",
-    "provider": provider_id,
-    "meta_launch_url": "http://localhost:3000",
-}
+# === Step 6: Create Application ===
 create_or_update(
     f"{BASE_URL}/api/v3/applications/",
     "my-test-app",
-    app_payload,
-    "Application"
+    {
+        "name": "My Test App",
+        "slug": "my-test-app",
+        "provider": provider_id,
+        "meta_launch_url": "http://localhost:3000",
+    },
+    "application"
 )
 
 print("\n🎉 All resources created or updated successfully.")
