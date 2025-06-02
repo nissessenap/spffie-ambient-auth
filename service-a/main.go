@@ -79,11 +79,11 @@ func generatePKCE() (verifier, challenge string, err error) {
 // getOIDCConfig returns the OIDC configuration for Authentik
 func getOIDCConfig() *OIDCConfig {
 	// Different URLs for browser-accessible (AuthURL) vs service-to-service (TokenURL)
-	browserBaseURL := "http://localhost:9000"                                  // For user browser access (port-forwarded)
+	//	browserBaseURL := "http://localhost:9000"                                  // For user browser access (port-forwarded)
 	serviceBaseURL := "http://authentik-server.authentik.svc.cluster.local:80" // For service-to-service calls
 
 	return &OIDCConfig{
-		AuthURL:     browserBaseURL + "/application/o/authorize/", // User browser access
+		AuthURL:     serviceBaseURL + "/application/o/authorize/", // User browser access
 		TokenURL:    serviceBaseURL + "/application/o/token/",     // Service-to-service access
 		ClientID:    "spiffe-pkce-client",                         // Updated to use the new PKCE client ID
 		RedirectURI: "http://localhost:8081/callback",             // Plain HTTP for demo
