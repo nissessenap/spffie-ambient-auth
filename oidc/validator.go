@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -224,11 +225,21 @@ func (tv *TokenValidator) extractUserInfoFromClaims(claims jwt.MapClaims) (*User
 // getUserInfoFromToken validates an access token by calling the UserInfo endpoint
 func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken string) (*UserInfo, error) {
 	// Get UserInfo endpoint URL from the OIDC provider configuration
-	// This is more reliable than manually constructing the URL
 	userInfoURL := tv.provider.UserInfoEndpoint()
-
+	
+	// Fix for cluster-internal communication: replace localhost with cluster service address
+	if strings.Contains(userInfoURL, "localhost:9000") {
+		clusterServiceAddr := "authentik-server.authentik.svc.cluster.local:80"
+		// Allow override via environment variable
+		if envAddr := os.Getenv("AUTHENTIK_CLUSTER_ADDRESS"); envAddr != "" {
+			clusterServiceAddr = envAddr
+		}
+		userInfoURL = strings.Replace(userInfoURL, "localhost:9000", clusterServiceAddr, 1)
+		fmt.Printf("[oidc-debug] Replaced localhost with cluster service address: %s\n", clusterServiceAddr)
+	}
+	
 	// Debug logging
-	fmt.Printf("[oidc-debug] Using UserInfo endpoint from provider: %s\n", userInfoURL)
+	fmt.Printf("[oidc-debug] Using UserInfo endpoint (after cluster fix): %s\n", userInfoURL)
 
 	// Create request to UserInfo endpoint
 	req, err := http.NewRequestWithContext(ctx, "GET", userInfoURL, nil)
