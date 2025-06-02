@@ -115,6 +115,34 @@ def setup_pkce_oidc_provider():
         
         print(f"[+] Will configure provider with {len(scope_mapping_ids)} property mappings")
         
+        # Get available RSA signing keys for JWT signing (required for RS256)
+        print("[+] Looking for RSA signing keys...")
+        keys_response = session.get(f"{authentik_url}/api/v3/crypto/certificatekeypairs/")
+        signing_key_id = None
+        
+        if keys_response.status_code == 200:
+            keys = keys_response.json()
+            for key in keys.get('results', []):
+                key_name = key.get('name', '').lower()
+                # Look for RSA keys that can be used for signing
+                if 'rsa' in key_name or 'signing' in key_name or 'authentik' in key_name:
+                    signing_key_id = key['pk']
+                    print(f"[+] Found RSA signing key: {key['name']} (ID: {signing_key_id})")
+                    break
+            
+            if not signing_key_id and keys.get('results'):
+                # If no specifically named RSA key, use the first available key
+                signing_key_id = keys['results'][0]['pk']
+                print(f"[+] Using default signing key: {keys['results'][0]['name']} (ID: {signing_key_id})")
+        else:
+            print(f"[!] Warning: Could not get signing keys: {keys_response.status_code}")
+            print("[+] Will use default signing (may cause HS256 vs RS256 issues)")
+        
+        if signing_key_id:
+            print(f"[✓] Will use RSA signing key ID: {signing_key_id}")
+        else:
+            print("[!] Warning: No RSA signing key found - tokens may use HS256 instead of RS256")
+        
         # Create new PKCE-enabled OAuth2 provider
         provider_data = {
             "name": provider_name,
@@ -139,13 +167,16 @@ def setup_pkce_oidc_provider():
             "sub_mode": "hashed_user_id",
             "include_claims_in_id_token": True,
             "issuer_mode": "per_provider",
-            "signing_key": None,  # Use default signing key
             "access_code_validity": "minutes=10",  # Authorization codes valid for 10 minutes
             "access_token_validity": "hours=1",    # Access tokens valid for 1 hour
             "refresh_token_validity": "days=30",   # Refresh tokens valid for 30 days
             # Enable groups in tokens - these settings help ensure group claims are included
             "include_claims_in_id_token": True,
         }
+        
+        # Add RSA signing key if found (this forces RS256 instead of HS256)
+        if signing_key_id:
+            provider_data["signing_key"] = signing_key_id
         
         # Add scope mappings if we found any
         if scope_mapping_ids:
