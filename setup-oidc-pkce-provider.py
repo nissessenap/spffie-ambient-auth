@@ -91,53 +91,29 @@ def setup_pkce_oidc_provider():
                     print(f"[!] Warning: Failed to delete provider: {delete_response.status_code}")
                 break
         
-        # Get available OAuth2 provider property mappings (not OAuth source mappings)
-        scope_mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/oauth2/")
-        if scope_mappings_response.status_code != 200:
-            print(f"[!] Warning: Failed to get OAuth2 provider mappings: {scope_mappings_response.status_code}")
-            print("[+] Continuing without custom scope mappings...")
-            scope_mapping_ids = []
-        else:
-            scope_mappings = scope_mappings_response.json()
-            print(f"[+] Found OAuth2 provider mappings: {len(scope_mappings.get('results', []))} total")
-            
-            # Find the scope mappings we need
-            required_scopes = ["openid", "email", "profile", "offline_access", "groups"]
-            scope_mapping_ids = []
-            
-            for mapping in scope_mappings.get('results', []):
-                scope_name = mapping.get('scope_name', '').lower()
-                if scope_name in required_scopes:
+        # Handle property mappings for groups - use a simpler approach
+        # In Authentik, built-in scope mappings are often sufficient
+        print("[+] Configuring OIDC scopes and claims...")
+        
+        # We'll rely on Authentik's built-in scope mappings and ensure the provider
+        # includes claims in both access tokens and ID tokens
+        scope_mapping_ids = []
+        
+        # Check if there are any existing property mappings we can use
+        try:
+            # Try to get any existing OAuth2 property mappings
+            mappings_response = session.get(f"{authentik_url}/api/v3/propertymappings/oauth2/")
+            if mappings_response.status_code == 200:
+                mappings = mappings_response.json()
+                for mapping in mappings.get('results', []):
                     scope_mapping_ids.append(mapping['pk'])
-                    print(f"[+] Found scope mapping: {mapping['name']} -> scope '{scope_name}'")
-            
-            # Check if we're missing the groups scope mapping
-            has_groups_scope = any(mapping.get('scope_name', '').lower() == 'groups' 
-                                 for mapping in scope_mappings.get('results', []))
-            
-            if not has_groups_scope:
-                print("[+] Groups scope mapping not found, creating it...")
-                groups_mapping = {
-                    "name": "Groups Scope Mapping",
-                    "expression": "[g.name for g in user.groups.all()]",
-                    "scope_name": "groups"
-                }
-                
-                create_response = session.post(
-                    f"{authentik_url}/api/v3/propertymappings/oauth2/",
-                    json=groups_mapping
-                )
-                
-                if create_response.status_code == 201:
-                    mapping = create_response.json()
-                    scope_mapping_ids.append(mapping['pk'])
-                    print(f"[✓] Created groups scope mapping: {mapping['name']} -> scope 'groups'")
-                else:
-                    print(f"[!] Warning: Failed to create groups mapping: {create_response.status_code}")
-                    print(f"Response: {create_response.text}")
-            
-            if not scope_mapping_ids:
-                print("[!] Warning: No scope mappings found - tokens may not include user profile data")
+                    print(f"[+] Found property mapping: {mapping.get('name', 'Unknown')}")
+            else:
+                print(f"[+] OAuth2 property mappings endpoint returned {mappings_response.status_code}")
+        except Exception as e:
+            print(f"[+] Property mappings check skipped: {e}")
+        
+        print(f"[+] Will configure provider with {len(scope_mapping_ids)} property mappings")
         
         # Create new PKCE-enabled OAuth2 provider
         provider_data = {
@@ -167,6 +143,8 @@ def setup_pkce_oidc_provider():
             "access_code_validity": "minutes=10",  # Authorization codes valid for 10 minutes
             "access_token_validity": "hours=1",    # Access tokens valid for 1 hour
             "refresh_token_validity": "days=30",   # Refresh tokens valid for 30 days
+            # Enable groups in tokens - these settings help ensure group claims are included
+            "include_claims_in_id_token": True,
         }
         
         # Add scope mappings if we found any
