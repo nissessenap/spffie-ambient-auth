@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -40,24 +41,39 @@ var (
 func initOIDC() error {
 	providerURL := os.Getenv("OIDC_PROVIDER_URL")
 	if providerURL == "" {
-		providerURL = "http://localhost:9000/application/o/"
+		providerURL = "http://localhost:9000/application/o/service-a"
 	}
+	log.Printf("[oidc] Using provider URL: %s", providerURL)
 
 	clientID := os.Getenv("OIDC_CLIENT_ID")
 	if clientID == "" {
 		clientID = "service-a"
 	}
+	log.Printf("[oidc] Using client ID: %s", clientID)
 
 	redirectURL := os.Getenv("OIDC_REDIRECT_URL")
 	if redirectURL == "" {
 		redirectURL = "http://localhost:8080/callback"
 	}
+	log.Printf("[oidc] Using redirect URL: %s", redirectURL)
 
 	ctx := context.Background()
+	log.Printf("[oidc] Attempting to create OIDC provider...")
+
+	// Create a custom HTTP client with logging
+	httpClient := &http.Client{
+		Transport: &loggingTransport{
+			base: http.DefaultTransport,
+		},
+	}
+	ctx = oidc.ClientContext(ctx, httpClient)
+
 	provider, err := oidc.NewProvider(ctx, providerURL)
 	if err != nil {
+		log.Printf("[oidc] Failed to create OIDC provider: %v", err)
 		return fmt.Errorf("failed to create OIDC provider: %v", err)
 	}
+	log.Printf("[oidc] Successfully created OIDC provider")
 
 	config := &oauth2.Config{
 		ClientID:    clientID,
@@ -65,18 +81,39 @@ func initOIDC() error {
 		Endpoint:    provider.Endpoint(),
 		Scopes:      []string{oidc.ScopeOpenID, "profile", "email", "groups"},
 	}
+	log.Printf("[oidc] Created OAuth2 config with scopes: %v", config.Scopes)
 
 	verifier := provider.Verifier(&oidc.Config{
 		ClientID: clientID,
 	})
+	log.Printf("[oidc] Created token verifier")
 
 	oidcConfig = &OIDCConfig{
 		Provider:     provider,
 		OAuth2Config: config,
 		Verifier:     verifier,
 	}
+	log.Printf("[oidc] OIDC initialization completed successfully")
 
 	return nil
+}
+
+// loggingTransport is a custom transport that logs HTTP requests and responses
+type loggingTransport struct {
+	base http.RoundTripper
+}
+
+func (t *loggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	log.Printf("[http] Request: %s %s", req.Method, req.URL.String())
+
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		log.Printf("[http] Error: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[http] Response: %s", resp.Status)
+	return resp, nil
 }
 
 // generatePKCEVerifier generates a random PKCE verifier

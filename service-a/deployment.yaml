@@ -34,11 +34,11 @@ spec:
             - name: SPIFFE_ENDPOINT_SOCKET
               value: unix:///run/spire/agent-sockets/spire-agent.sock
             - name: OIDC_PROVIDER_URL
-              value: http://authentik-server.authentik.svc.cluster.local:80/application/o/
+              value: http://authentik-server.authentik.svc.cluster.local:80/application/o/service-a
             - name: OIDC_CLIENT_ID
               value: service-a
             - name: OIDC_REDIRECT_URL
-              value: https://service-a:8080/callback
+              value: http://service-a:8080/callback
       volumes:
         - name: spire-agent-socket
           hostPath:
