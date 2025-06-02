@@ -132,17 +132,42 @@ func (tv *TokenValidator) ValidateAccessToken(ctx context.Context, tokenString s
 		fmt.Printf("[oidc-debug] User profile data missing from JWT, calling UserInfo endpoint\n")
 		userInfoFromEndpoint, err := tv.getUserInfoFromToken(ctx, tokenString)
 		if err != nil {
-			fmt.Printf("[oidc-debug] UserInfo endpoint call failed: %v, using JWT claims only\n", err)
-			// Continue with JWT-only userInfo
+			fmt.Printf("[oidc-debug] UserInfo endpoint call failed: %v\n", err)
+
+			// If we have at least a subject, try to create a basic username from it
+			if userInfo.Username == "" && userInfo.Subject != "" {
+				// Use subject as username if no other username is available
+				userInfo.Username = userInfo.Subject
+				fmt.Printf("[oidc-debug] Using subject as username: %s\n", userInfo.Username)
+			}
+
+			// Continue with JWT-only userInfo - don't fail if UserInfo endpoint is unavailable
+			fmt.Printf("[oidc-debug] Continuing with JWT claims only - Username: %s, Groups: %v\n", userInfo.Username, userInfo.Groups)
 		} else {
 			// Merge data from UserInfo endpoint with JWT claims
 			fmt.Printf("[oidc-debug] Successfully got user info from endpoint, merging data\n")
-			userInfo.Username = userInfoFromEndpoint.Username
-			userInfo.Email = userInfoFromEndpoint.Email
-			userInfo.Name = userInfoFromEndpoint.Name
-			userInfo.Groups = userInfoFromEndpoint.Groups
+			if userInfoFromEndpoint.Username != "" {
+				userInfo.Username = userInfoFromEndpoint.Username
+			}
+			if userInfoFromEndpoint.Email != "" {
+				userInfo.Email = userInfoFromEndpoint.Email
+			}
+			if userInfoFromEndpoint.Name != "" {
+				userInfo.Name = userInfoFromEndpoint.Name
+			}
+			if len(userInfoFromEndpoint.Groups) > 0 {
+				userInfo.Groups = userInfoFromEndpoint.Groups
+			}
 		}
 	}
+
+	// Ensure we have at least a username for authorization
+	if userInfo.Username == "" {
+		return nil, fmt.Errorf("no username available in token claims or UserInfo endpoint")
+	}
+
+	fmt.Printf("[oidc-debug] Final UserInfo: Username=%s, Email=%s, Groups=%v, Subject=%s\n",
+		userInfo.Username, userInfo.Email, userInfo.Groups, userInfo.Subject)
 
 	return userInfo, nil
 }
@@ -165,6 +190,9 @@ func (tv *TokenValidator) extractUserInfoFromClaims(claims jwt.MapClaims) (*User
 		userInfo.Username = username
 	} else if username, ok := claims["username"].(string); ok {
 		userInfo.Username = username
+	} else if uid, ok := claims["uid"].(string); ok {
+		// Fallback to uid claim if available
+		userInfo.Username = uid
 	}
 
 	// Extract email
@@ -198,7 +226,7 @@ func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken 
 	// Get UserInfo endpoint URL from the OIDC provider configuration
 	// This is more reliable than manually constructing the URL
 	userInfoURL := tv.provider.UserInfoEndpoint()
-	
+
 	// Debug logging
 	fmt.Printf("[oidc-debug] Using UserInfo endpoint from provider: %s\n", userInfoURL)
 
@@ -210,6 +238,11 @@ func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken 
 
 	// Add the access token as Bearer token
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+	req.Header.Set("Accept", "application/json")
+
+	// Log request details for debugging
+	fmt.Printf("[oidc-debug] UserInfo request URL: %s\n", req.URL.String())
+	fmt.Printf("[oidc-debug] UserInfo request headers: %v\n", req.Header)
 
 	// Create a simple HTTP client without SPIFFE mTLS for UserInfo endpoint
 	// UserInfo endpoints expect Bearer token authentication, not client certificates
@@ -237,9 +270,16 @@ func (tv *TokenValidator) getUserInfoFromToken(ctx context.Context, accessToken 
 	}
 
 	fmt.Printf("[oidc-debug] UserInfo response status: %d\n", resp.StatusCode)
+	fmt.Printf("[oidc-debug] UserInfo response headers: %v\n", resp.Header)
 	fmt.Printf("[oidc-debug] UserInfo response body: %s\n", string(body))
 
 	if resp.StatusCode != http.StatusOK {
+		// Provide more context about UserInfo endpoint failures
+		if resp.StatusCode == 403 {
+			return nil, fmt.Errorf("UserInfo endpoint returned 403 Forbidden - this may indicate the access token lacks required scopes or is an ID token instead of an access token: %s", string(body))
+		} else if resp.StatusCode == 401 {
+			return nil, fmt.Errorf("UserInfo endpoint returned 401 Unauthorized - the access token may be invalid or expired: %s", string(body))
+		}
 		return nil, fmt.Errorf("UserInfo endpoint returned status %d: %s", resp.StatusCode, string(body))
 	}
 
