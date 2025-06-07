@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
+	"github.com/NissesSenap/spffie-ambient-auth/service-a/config"
 )
 
 // GenerateAuthURL creates the OIDC authorization URL and sets up state
-func GenerateAuthURL(w http.ResponseWriter, r *http.Request, oidcClient *oidc.Client) (string, string, error) {
+func GenerateAuthURL(w http.ResponseWriter, r *http.Request, oidcClient *oidc.Client, cfg *config.Config) (string, string, error) {
 	if oidcClient == nil {
 		return "", "", fmt.Errorf("OIDC not initialized")
 	}
@@ -20,10 +21,10 @@ func GenerateAuthURL(w http.ResponseWriter, r *http.Request, oidcClient *oidc.Cl
 	}
 
 	// Determine redirect URI based on how we're accessed
-	redirectURI := "http://localhost:8081/callback"
+	redirectURI := fmt.Sprintf("http://localhost:%s/callback", cfg.DefaultCallbackPort)
 	if host := r.Header.Get("Host"); host != "" {
-		if strings.Contains(host, "localhost:8081") {
-			redirectURI = "http://localhost:8081/callback"
+		if strings.Contains(host, fmt.Sprintf("localhost:%s", cfg.DefaultCallbackPort)) {
+			redirectURI = fmt.Sprintf("http://localhost:%s/callback", cfg.DefaultCallbackPort)
 		} else {
 			redirectURI = fmt.Sprintf("http://%s/callback", host)
 		}
@@ -31,8 +32,7 @@ func GenerateAuthURL(w http.ResponseWriter, r *http.Request, oidcClient *oidc.Cl
 	pkce.RedirectURI = redirectURI
 
 	// Create state JWT for stateless operation
-	secret := []byte("your-secret-key") // In production, use a proper secret
-	tokenString, err := oidc.CreateStateJWT(pkce, secret)
+	tokenString, err := oidc.CreateStateJWT(pkce, cfg.OIDCSecret)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create state token: %w", err)
 	}
@@ -53,10 +53,10 @@ func GenerateAuthURL(w http.ResponseWriter, r *http.Request, oidcClient *oidc.Cl
 }
 
 // ExtractBearerToken extracts the bearer token from Authorization header
-func ExtractBearerToken(r *http.Request) (string, bool) {
+func ExtractBearerToken(r *http.Request) (string, error) {
 	authHeader := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return "", false
+		return "", fmt.Errorf("missing or invalid Authorization header")
 	}
-	return strings.TrimPrefix(authHeader, "Bearer "), true
+	return authHeader, nil
 }

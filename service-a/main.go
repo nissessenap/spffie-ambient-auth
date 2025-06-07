@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
+	"github.com/NissesSenap/spffie-ambient-auth/service-a/config"
 	"github.com/NissesSenap/spffie-ambient-auth/service-a/server"
 )
 
@@ -23,11 +24,10 @@ func main() {
 	ctx := context.Background()
 
 	log.Println("[startup] Starting service-a...")
-	socket := os.Getenv("SPIFFE_ENDPOINT_SOCKET")
-	if socket == "" {
-		socket = "unix:///run/spire/sockets/agent.sock"
-	}
-	log.Printf("[startup] Using SPIFFE_ENDPOINT_SOCKET=%s", socket)
+	
+	// Load configuration
+	cfg := config.New()
+	log.Printf("[startup] Using SPIFFE_ENDPOINT_SOCKET=%s", cfg.SPIFFEEndpointSocket)
 
 	// Initialize OIDC
 	oidcClient, err := initOIDC()
@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Start plain HTTP server for OIDC endpoints first (independent of SPIRE)
-	plainServer := server.StartPlainHTTPServer(oidcClient)
+	plainServer := server.StartPlainHTTPServer(cfg, oidcClient)
 	_ = plainServer // Keep reference to avoid unused variable warning
 
 	// Try to connect to SPIRE Workload API
@@ -50,7 +50,7 @@ func main() {
 	defer source.Close()
 
 	// Start mTLS server (blocking)
-	if err := server.StartMTLSServer(source, oidcClient); err != nil {
+	if err := server.StartMTLSServer(cfg, source, oidcClient); err != nil {
 		log.Fatalf("[fatal] mTLS server failed: %v", err)
 	}
 }

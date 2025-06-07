@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
+	"github.com/NissesSenap/spffie-ambient-auth/service-a/config"
 	"github.com/NissesSenap/spffie-ambient-auth/service-a/handlers"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -32,20 +33,20 @@ func SetupRoutes(mux *http.ServeMux, oidcHandler *handlers.OIDCHandler, docHandl
 }
 
 // StartPlainHTTPServer starts the HTTP server for OIDC endpoints
-func StartPlainHTTPServer(oidcClient *oidc.Client) *http.Server {
-	oidcHandler := handlers.NewOIDCHandler(oidcClient)
-	docHandler := handlers.NewDocumentHandler()
+func StartPlainHTTPServer(cfg *config.Config, oidcClient *oidc.Client) *http.Server {
+	oidcHandler := handlers.NewOIDCHandler(oidcClient, cfg)
+	docHandler := handlers.NewDocumentHandler(cfg)
 
 	plainMux := http.NewServeMux()
 	SetupRoutes(plainMux, oidcHandler, docHandler)
 
 	plainServer := &http.Server{
-		Addr:    ":8081",
+		Addr:    ":" + cfg.PlainHTTPPort,
 		Handler: plainMux,
 	}
 
 	go func() {
-		log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
+		log.Printf("[startup] service-a plain HTTP server listening on :%s (for OIDC endpoints)", cfg.PlainHTTPPort)
 		if err := plainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[error] Plain HTTP server failed: %v", err)
 		}
@@ -78,23 +79,23 @@ func SetupSPIREConnection(ctx context.Context) (*workloadapi.X509Source, error) 
 }
 
 // StartMTLSServer starts the mTLS server with SPIRE integration
-func StartMTLSServer(source *workloadapi.X509Source, oidcClient *oidc.Client) error {
+func StartMTLSServer(cfg *config.Config, source *workloadapi.X509Source, oidcClient *oidc.Client) error {
 	// Require mTLS and verify client has a SPIFFE ID
 	tlsConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
 
-	oidcHandler := handlers.NewOIDCHandler(oidcClient)
-	docHandler := handlers.NewDocumentHandler()
+	oidcHandler := handlers.NewOIDCHandler(oidcClient, cfg)
+	docHandler := handlers.NewDocumentHandler(cfg)
 
 	mux := http.NewServeMux()
 	SetupRoutes(mux, oidcHandler, docHandler)
 
 	server := &http.Server{
-		Addr:      ":8080",
+		Addr:      ":" + cfg.MTLSPort,
 		Handler:   mux,
 		TLSConfig: tlsConfig,
 	}
 
 	// Start mTLS server (blocking)
-	log.Println("[startup] service-a mTLS server listening on :8080")
+	log.Printf("[startup] service-a mTLS server listening on :%s", cfg.MTLSPort)
 	return server.ListenAndServeTLS("", "")
 }

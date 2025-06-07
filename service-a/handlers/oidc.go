@@ -10,11 +10,13 @@ import (
 
 	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
 	"github.com/NissesSenap/spffie-ambient-auth/service-a/auth"
+	"github.com/NissesSenap/spffie-ambient-auth/service-a/config"
 )
 
 type OIDCHandler struct {
 	OIDCClient *oidc.Client
 	Templates  *template.Template
+	Config     *config.Config
 }
 
 type LoginData struct {
@@ -22,7 +24,7 @@ type LoginData struct {
 	State   string
 }
 
-func NewOIDCHandler(oidcClient *oidc.Client) *OIDCHandler {
+func NewOIDCHandler(oidcClient *oidc.Client, cfg *config.Config) *OIDCHandler {
 	// Load templates
 	tmpl, err := template.ParseGlob(filepath.Join("templates", "*.html"))
 	if err != nil {
@@ -33,11 +35,12 @@ func NewOIDCHandler(oidcClient *oidc.Client) *OIDCHandler {
 	return &OIDCHandler{
 		OIDCClient: oidcClient,
 		Templates:  tmpl,
+		Config:     cfg,
 	}
 }
 
 func (h *OIDCHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	authURL, state, err := auth.GenerateAuthURL(w, r, h.OIDCClient)
+	authURL, state, err := auth.GenerateAuthURL(w, r, h.OIDCClient, h.Config)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -62,7 +65,7 @@ func (h *OIDCHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use the template file
-	if err := h.Templates.ExecuteTemplate(w, "login.html", data); err != nil {
+	if err := h.Templates.ExecuteTemplate(w, "templates/login.html", data); err != nil {
 		// Simple fallback if template fails
 		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -70,7 +73,7 @@ func (h *OIDCHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OIDCHandler) LoginURLHandler(w http.ResponseWriter, r *http.Request) {
-	authURL, _, err := auth.GenerateAuthURL(w, r, h.OIDCClient)
+	authURL, _, err := auth.GenerateAuthURL(w, r, h.OIDCClient, h.Config)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -95,8 +98,7 @@ func (h *OIDCHandler) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse state JWT
-	secret := []byte("your-secret-key")
-	pkce, err := oidc.ParseStateJWT(cookie.Value, secret)
+	pkce, err := oidc.ParseStateJWT(cookie.Value, h.Config.OIDCSecret)
 	if err != nil {
 		http.Error(w, "Invalid state token", http.StatusBadRequest)
 		return
@@ -141,8 +143,8 @@ func (h *OIDCHandler) CallbackHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *OIDCHandler) UserinfoHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract JWT token from Authorization header
-	tokenString, ok := auth.ExtractBearerToken(r)
-	if !ok {
+	tokenString, err := auth.ExtractBearerToken(r)
+	if err != nil {
 		http.Error(w, "Missing or invalid Authorization header", http.StatusUnauthorized)
 		return
 	}
@@ -161,7 +163,7 @@ func (h *OIDCHandler) UserinfoHandler(w http.ResponseWriter, r *http.Request) {
 
 func HelloHandler(w http.ResponseWriter, r *http.Request) {
 	token := ""
-	if tokenString, ok := auth.ExtractBearerToken(r); ok {
+	if tokenString, err := auth.ExtractBearerToken(r); err == nil {
 		token = tokenString
 	}
 
