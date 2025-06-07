@@ -7,7 +7,7 @@ SERVICE_B_IMAGE ?= service-b:latest
 .PHONY: build-service-a build-service-b build-all load-service-a load-service-b load-all
 
 build-service-a:
-	docker build -t $(SERVICE_A_IMAGE) ./service-a
+	docker build -t $(SERVICE_A_IMAGE) -f ./service-a/Dockerfile .
 
 load-service-a: build-service-a
 	kind load docker-image $(SERVICE_A_IMAGE) --name spffie-demo
