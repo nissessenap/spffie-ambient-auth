@@ -42,10 +42,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Determine redirect URI based on how we're accessed
-	redirectURI := "http://localhost:8090/callback"
+	redirectURI := "http://localhost:8081/callback"
 	if host := r.Header.Get("Host"); host != "" {
-		if strings.Contains(host, "localhost:8090") {
-			redirectURI = "http://localhost:8090/callback"
+		if strings.Contains(host, "localhost:8081") {
+			redirectURI = "http://localhost:8081/callback"
 		} else {
 			redirectURI = fmt.Sprintf("http://%s/callback", host)
 		}
