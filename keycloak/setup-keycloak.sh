@@ -172,10 +172,10 @@ kubectl exec -n keycloak keycloak-0 -- curl -s \
     "standardFlowEnabled": true,
     "directAccessGrantsEnabled": true,
     "redirectUris": ["http://localhost:3000/callback", "http://localhost:8090/callback"],
-    "postLogoutRedirectUris": ["http://localhost:3000", "http://localhost:8090"],
     "webOrigins": ["http://localhost:3000", "http://localhost:8090"],
     "attributes": {
-      "pkce.code.challenge.method": "S256"
+      "pkce.code.challenge.method": "S256",
+      "post.logout.redirect.uris": "http://localhost:3000##http://localhost:8090"
     },
     "protocolMappers": [
       {
