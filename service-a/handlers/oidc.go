@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -25,11 +26,30 @@ type LoginData struct {
 }
 
 func NewOIDCHandler(oidcClient *oidc.Client, cfg *config.Config) *OIDCHandler {
-	// Load templates
-	tmpl, err := template.ParseGlob(filepath.Join("templates", "*.html"))
+	var tmpl *template.Template
+	var err error
+	
+	// Try to load templates from files first
+	tmpl, err = template.ParseGlob(filepath.Join("templates", "*.html"))
 	if err != nil {
+		log.Printf("[warning] Failed to load templates from files: %v, using fallback", err)
 		// Fallback to embedded template if file not found
-		tmpl = template.New("login")
+		tmpl = template.New("login.html")
+		fallbackHTML := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h1>Login to Service A</h1>
+    <p>Click the link below to authenticate:</p>
+    <a href="{{.AuthURL}}">Login with OIDC Provider</a>
+    <p>State: {{.State}}</p>
+</body>
+</html>`
+		tmpl, _ = tmpl.Parse(fallbackHTML)
+	} else {
+		log.Printf("[startup] Successfully loaded templates from files")
 	}
 
 	return &OIDCHandler{
@@ -64,8 +84,9 @@ func (h *OIDCHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		State:   state,
 	}
 
-	// Use the template file
-	if err := h.Templates.ExecuteTemplate(w, "templates/login.html", data); err != nil {
+	// Use the template file (template name is just "login.html" when loaded from file)
+	templateName := "login.html"
+	if err := h.Templates.ExecuteTemplate(w, templateName, data); err != nil {
 		// Simple fallback if template fails
 		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
 		return
