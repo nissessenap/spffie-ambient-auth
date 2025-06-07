@@ -342,6 +342,86 @@ func deleteDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	handleDocumentOperation(w, r, "delete")
 }
 
+// setupRoutes configures all HTTP routes for the given mux
+func setupRoutes(mux *http.ServeMux) {
+	// Legacy endpoints (for compatibility)
+	mux.HandleFunc("/hello", helloHandler)
+	mux.HandleFunc("/call-b", callServiceBHandler)
+
+	// OIDC endpoints
+	mux.HandleFunc("/login", loginHandler)
+	mux.HandleFunc("/login-url", loginURLHandler)
+	mux.HandleFunc("/callback", callbackHandler)
+	mux.HandleFunc("/userinfo", userinfoHandler)
+
+	// Document operation endpoints (require JWT)
+	mux.HandleFunc("/documents/view", viewDocumentHandler)
+	mux.HandleFunc("/documents/edit", editDocumentHandler)
+	mux.HandleFunc("/documents/delete", deleteDocumentHandler)
+}
+
+// startPlainHTTPServer starts the HTTP server for OIDC endpoints
+func startPlainHTTPServer() *http.Server {
+	plainMux := http.NewServeMux()
+	setupRoutes(plainMux)
+
+	plainServer := &http.Server{
+		Addr:    ":8081",
+		Handler: plainMux,
+	}
+
+	go func() {
+		log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
+		if err := plainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[error] Plain HTTP server failed: %v", err)
+		}
+	}()
+
+	return plainServer
+}
+
+// setupSPIREConnection attempts to connect to SPIRE and returns the X509Source
+func setupSPIREConnection(ctx context.Context) (*workloadapi.X509Source, error) {
+	log.Println("[startup] Attempting to connect to SPIRE Workload API...")
+
+	// Create a context with timeout for SPIRE connection
+	spireCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	source, err := workloadapi.NewX509Source(spireCtx)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create X509Source: %w", err)
+	}
+
+	svid, err := source.GetX509SVID()
+	if err != nil {
+		source.Close()
+		return nil, fmt.Errorf("unable to fetch X509SVID: %w", err)
+	}
+	log.Printf("[startup] Got SVID: %s", svid.ID)
+
+	return source, nil
+}
+
+// startMTLSServer starts the mTLS server with SPIRE integration
+func startMTLSServer(source *workloadapi.X509Source) error {
+	// Require mTLS and verify client has a SPIFFE ID
+	tlsConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
+
+	mux := http.NewServeMux()
+	setupRoutes(mux)
+
+	server := &http.Server{
+		Addr:      ":8080",
+		Handler:   mux,
+		TLSConfig: tlsConfig,
+	}
+
+	// Start mTLS server (blocking)
+	log.Println("[startup] service-a mTLS server listening on :8080")
+	return server.ListenAndServeTLS("", "")
+}
+
 func callServiceBHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	source, err := workloadapi.NewX509Source(ctx)
@@ -380,78 +460,20 @@ func main() {
 	}
 
 	// Start plain HTTP server for OIDC endpoints first (independent of SPIRE)
-	plainMux := http.NewServeMux()
-	plainMux.HandleFunc("/login", loginHandler)
-	plainMux.HandleFunc("/login-url", loginURLHandler) // Raw URL endpoint
-	plainMux.HandleFunc("/callback", callbackHandler)
-	plainMux.HandleFunc("/userinfo", userinfoHandler)
-	plainMux.HandleFunc("/hello", helloHandler)
+	plainServer := startPlainHTTPServer()
+	_ = plainServer // Keep reference to avoid unused variable warning
 
-	plainServer := &http.Server{
-		Addr:    ":8081",
-		Handler: plainMux,
-	}
-
-	// Start plain HTTP server
-	go func() {
-		log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
-		if err := plainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[error] Plain HTTP server failed: %v", err)
-		}
-	}()
-
-	// Try to connect to the SPIRE Workload API (with timeout)
-	log.Println("[startup] Attempting to connect to SPIRE Workload API...")
-
-	// Create a context with timeout for SPIRE connection
-	spireCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	source, err := workloadapi.NewX509Source(spireCtx)
+	// Try to connect to SPIRE Workload API
+	source, err := setupSPIREConnection(ctx)
 	if err != nil {
-		log.Printf("[warning] Unable to create X509Source: %v (mTLS server will not start)", err)
+		log.Printf("[warning] %v (mTLS server will not start)", err)
 		// Keep running with just the plain HTTP server
 		select {}
 	}
 	defer source.Close()
 
-	svid, err := source.GetX509SVID()
-	if err != nil {
-		log.Printf("[warning] Unable to fetch X509SVID: %v (mTLS server will not start)", err)
-		// Keep running with just the plain HTTP server
-		select {}
-	}
-	log.Printf("[startup] Got SVID: %s", svid.ID)
-
-	// Require mTLS and verify client has a SPIFFE ID
-	tlsConfig := tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeAny())
-
-	mux := http.NewServeMux()
-
-	// Legacy endpoints (for compatibility)
-	mux.HandleFunc("/hello", helloHandler)
-	mux.HandleFunc("/call-b", callServiceBHandler)
-
-	// OIDC endpoints
-	mux.HandleFunc("/login", loginHandler)
-	mux.HandleFunc("/login-url", loginURLHandler) // Raw URL endpoint
-	mux.HandleFunc("/callback", callbackHandler)
-	mux.HandleFunc("/userinfo", userinfoHandler)
-
-	// Document operation endpoints (now require JWT)
-	mux.HandleFunc("/documents/view", viewDocumentHandler)
-	mux.HandleFunc("/documents/edit", editDocumentHandler)
-	mux.HandleFunc("/documents/delete", deleteDocumentHandler)
-
-	server := &http.Server{
-		Addr:      ":8080",
-		Handler:   mux,
-		TLSConfig: tlsConfig,
-	}
-
 	// Start mTLS server (blocking)
-	log.Println("[startup] service-a mTLS server listening on :8080")
-	if err := server.ListenAndServeTLS("", ""); err != nil {
-		log.Fatalf("[fatal] ListenAndServeTLS failed: %v", err)
+	if err := startMTLSServer(source); err != nil {
+		log.Fatalf("[fatal] mTLS server failed: %v", err)
 	}
 }
