@@ -170,7 +170,9 @@ kubectl exec -n keycloak keycloak-0 -- curl -s \
     "enabled": true,
     "publicClient": true,
     "standardFlowEnabled": true,
-    "directAccessGrantsEnabled": true,
+    "implicitFlowEnabled": false,
+    "directAccessGrantsEnabled": false,
+    "serviceAccountsEnabled": false,
     "redirectUris": [
       "http://localhost:8081/callback", 
       "http://localhost:8090/callback",
@@ -185,6 +187,7 @@ kubectl exec -n keycloak keycloak-0 -- curl -s \
     ],
     "attributes": {
       "pkce.code.challenge.method": "S256",
+      "oauth2.pkce.challenge.method": "S256",
       "post.logout.redirect.uris": "http://localhost:8081##http://service-a.app.svc.cluster.local:8081"
     },
     "protocolMappers": [

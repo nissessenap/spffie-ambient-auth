@@ -82,7 +82,7 @@ func NewClient(ctx context.Context) (*Client, error) {
 		OAuth2Config: oauth2.Config{
 			ClientID: config.ClientID,
 			Endpoint: provider.Endpoint(),
-			Scopes:   []string{oidc.ScopeOpenID, "profile", "email", "groups"},
+			Scopes:   []string{oidc.ScopeOpenID, "profile", "email"},
 		},
 		Verifier: provider.Verifier(&oidc.Config{ClientID: config.ClientID}),
 		Config:   config,
