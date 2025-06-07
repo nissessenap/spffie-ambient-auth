@@ -29,6 +29,7 @@ type Config struct {
 	ClientID    string
 	Realm       string
 	IssuerURL   string
+	ExternalURL string // URL accessible from browser
 }
 
 // PKCEState holds PKCE flow state
@@ -60,11 +61,16 @@ func NewClient(ctx context.Context) (*Client, error) {
 
 	// For development with port-forward
 	if os.Getenv("DEV_MODE") == "true" {
-		config.KeycloakURL = "http://localhost:8080"
+		// Use internal service for API calls, external URL for browser redirects
+		config.KeycloakURL = "http://keycloak.keycloak.svc.cluster.local"
+		config.ExternalURL = "http://localhost:8080" // Browser-accessible URL via port-forward
+	} else {
+		config.ExternalURL = config.KeycloakURL // In cluster, use same URL
 	}
 
 	config.IssuerURL = fmt.Sprintf("%s/realms/%s", config.KeycloakURL, config.Realm)
 	log.Printf("[oidc] Initializing OIDC with issuer: %s", config.IssuerURL)
+	log.Printf("[oidc] External URL for auth: %s", config.ExternalURL)
 
 	provider, err := oidc.NewProvider(ctx, config.IssuerURL)
 	if err != nil {
@@ -115,7 +121,19 @@ func (c *Client) GeneratePKCE() (PKCEState, error) {
 
 // BuildAuthURL creates the authorization URL for OIDC flow
 func (c *Client) BuildAuthURL(pkce PKCEState, redirectURI string) string {
-	return c.OAuth2Config.AuthCodeURL(pkce.State,
+	// Use external URL for auth endpoint (browser-accessible)
+	authEndpoint := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/auth", c.Config.ExternalURL, c.Config.Realm)
+
+	config := oauth2.Config{
+		ClientID: c.OAuth2Config.ClientID,
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  authEndpoint,
+			TokenURL: c.OAuth2Config.Endpoint.TokenURL, // Keep internal for token exchange
+		},
+		Scopes: c.OAuth2Config.Scopes,
+	}
+
+	return config.AuthCodeURL(pkce.State,
 		oauth2.SetAuthURLParam("code_challenge", pkce.CodeChallenge),
 		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
 		oauth2.SetAuthURLParam("redirect_uri", redirectURI),

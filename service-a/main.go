@@ -19,6 +19,9 @@ import (
 var oidcClient *oidc.Client
 
 func initOIDC() error {
+	// Set DEV_MODE for local development with port-forward
+	os.Setenv("DEV_MODE", "true")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	client, err := oidc.NewClient(ctx)
@@ -330,11 +333,11 @@ func main() {
 
 	// Try to connect to the SPIRE Workload API (with timeout)
 	log.Println("[startup] Attempting to connect to SPIRE Workload API...")
-	
+
 	// Create a context with timeout for SPIRE connection
 	spireCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
+
 	source, err := workloadapi.NewX509Source(spireCtx)
 	if err != nil {
 		log.Printf("[warning] Unable to create X509Source: %v (mTLS server will not start)", err)
