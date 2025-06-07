@@ -171,8 +171,18 @@ kubectl exec -n keycloak keycloak-0 -- curl -s \
     "publicClient": true,
     "standardFlowEnabled": true,
     "directAccessGrantsEnabled": true,
-    "redirectUris": ["http://localhost:8081/callback", "http://service-a.app.svc.cluster.local:8081/callback"],
-    "webOrigins": ["http://localhost:8081", "http://service-a.app.svc.cluster.local:8081"],
+    "redirectUris": [
+      "http://localhost:8081/callback", 
+      "http://localhost:8090/callback",
+      "http://localhost:3000/callback",
+      "http://service-a.app.svc.cluster.local:8081/callback"
+    ],
+    "webOrigins": [
+      "http://localhost:8081", 
+      "http://localhost:8090",
+      "http://localhost:3000",
+      "http://service-a.app.svc.cluster.local:8081"
+    ],
     "attributes": {
       "pkce.code.challenge.method": "S256",
       "post.logout.redirect.uris": "http://localhost:8081##http://service-a.app.svc.cluster.local:8081"
