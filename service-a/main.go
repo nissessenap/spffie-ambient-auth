@@ -2,9 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,106 +11,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
-	"golang.org/x/oauth2"
 )
 
-// OIDC configuration
-type OIDCConfig struct {
-	Provider     *oidc.Provider
-	OAuth2Config oauth2.Config
-	Verifier     *oidc.IDTokenVerifier
-}
-
-var oidcConfig *OIDCConfig
-
-// PKCE state for stateless operation
-type PKCEState struct {
-	CodeVerifier  string `json:"code_verifier"`
-	CodeChallenge string `json:"code_challenge"`
-	State         string `json:"state"`
-	RedirectURI   string `json:"redirect_uri"`
-}
+var oidcClient *oidc.Client
 
 func initOIDC() error {
-	keycloakURL := os.Getenv("KEYCLOAK_URL")
-	if keycloakURL == "" {
-		keycloakURL = "http://keycloak.keycloak.svc.cluster.local:80"
-		// For development with port-forward
-		if os.Getenv("DEV_MODE") == "true" {
-			keycloakURL = "http://localhost:8080"
-		}
-	}
-
-	clientID := os.Getenv("OIDC_CLIENT_ID")
-	if clientID == "" {
-		clientID = "myapp-client"
-	}
-
-	realm := os.Getenv("OIDC_REALM")
-	if realm == "" {
-		realm = "myapp"
-	}
-
-	issuerURL := fmt.Sprintf("%s/realms/%s", keycloakURL, realm)
-	log.Printf("[oidc] Initializing OIDC with issuer: %s", issuerURL)
-
 	ctx := context.Background()
-	provider, err := oidc.NewProvider(ctx, issuerURL)
+	client, err := oidc.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create OIDC provider: %w", err)
+		return err
 	}
-
-	oidcConfig = &OIDCConfig{
-		Provider: provider,
-		OAuth2Config: oauth2.Config{
-			ClientID: clientID,
-			Endpoint: provider.Endpoint(),
-			Scopes:   []string{oidc.ScopeOpenID, "profile", "email", "groups"},
-		},
-		Verifier: provider.Verifier(&oidc.Config{ClientID: clientID}),
-	}
-
-	log.Println("[oidc] OIDC configuration initialized successfully")
+	oidcClient = client
 	return nil
 }
 
-func generatePKCE() (PKCEState, error) {
-	// Generate code verifier
-	codeVerifier := make([]byte, 32)
-	if _, err := rand.Read(codeVerifier); err != nil {
-		return PKCEState{}, err
-	}
-	codeVerifierStr := base64.RawURLEncoding.EncodeToString(codeVerifier)
-
-	// Generate code challenge
-	hash := sha256.Sum256([]byte(codeVerifierStr))
-	codeChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
-
-	// Generate state
-	state := make([]byte, 16)
-	if _, err := rand.Read(state); err != nil {
-		return PKCEState{}, err
-	}
-	stateStr := base64.RawURLEncoding.EncodeToString(state)
-
-	return PKCEState{
-		CodeVerifier:  codeVerifierStr,
-		CodeChallenge: codeChallenge,
-		State:         stateStr,
-	}, nil
-}
-
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-	if oidcConfig == nil {
+	if oidcClient == nil {
 		http.Error(w, "OIDC not initialized", http.StatusInternalServerError)
 		return
 	}
 
-	pkce, err := generatePKCE()
+	pkce, err := oidcClient.GeneratePKCE()
 	if err != nil {
 		http.Error(w, "Failed to generate PKCE", http.StatusInternalServerError)
 		return
@@ -130,17 +51,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	pkce.RedirectURI = redirectURI
 
-	// Encode PKCE state as JWT for stateless operation
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"code_verifier":  pkce.CodeVerifier,
-		"code_challenge": pkce.CodeChallenge,
-		"state":          pkce.State,
-		"redirect_uri":   pkce.RedirectURI,
-		"exp":            time.Now().Add(10 * time.Minute).Unix(),
-	})
-
+	// Create state JWT for stateless operation
 	secret := []byte("your-secret-key") // In production, use a proper secret
-	tokenString, err := token.SignedString(secret)
+	tokenString, err := oidc.CreateStateJWT(pkce, secret)
 	if err != nil {
 		http.Error(w, "Failed to create state token", http.StatusInternalServerError)
 		return
@@ -157,11 +70,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	// Build authorization URL
-	authURL := oidcConfig.OAuth2Config.AuthCodeURL(pkce.State,
-		oauth2.SetAuthURLParam("code_challenge", pkce.CodeChallenge),
-		oauth2.SetAuthURLParam("code_challenge_method", "S256"),
-		oauth2.SetAuthURLParam("redirect_uri", redirectURI),
-	)
+	authURL := oidcClient.BuildAuthURL(pkce, redirectURI)
 
 	// Return JSON response with auth URL for API clients
 	w.Header().Set("Content-Type", "application/json")
@@ -172,7 +81,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func callbackHandler(w http.ResponseWriter, r *http.Request) {
-	if oidcConfig == nil {
+	if oidcClient == nil {
 		http.Error(w, "OIDC not initialized", http.StatusInternalServerError)
 		return
 	}
@@ -185,44 +94,28 @@ func callbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse state JWT
-	token, err := jwt.Parse(cookie.Value, func(token *jwt.Token) (interface{}, error) {
-		return []byte("your-secret-key"), nil
-	})
-	if err != nil || !token.Valid {
+	secret := []byte("your-secret-key")
+	pkce, err := oidc.ParseStateJWT(cookie.Value, secret)
+	if err != nil {
 		http.Error(w, "Invalid state token", http.StatusBadRequest)
 		return
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "Invalid state claims", http.StatusBadRequest)
-		return
-	}
-
-	expectedState, _ := claims["state"].(string)
-	codeVerifier, _ := claims["code_verifier"].(string)
-	redirectURI, _ := claims["redirect_uri"].(string)
-
 	// Verify state parameter
-	if r.URL.Query().Get("state") != expectedState {
+	if r.URL.Query().Get("state") != pkce.State {
 		http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 		return
 	}
 
 	// Exchange code for token
-	oidcConfig.OAuth2Config.RedirectURL = redirectURI
-	oauth2Token, err := oidcConfig.OAuth2Config.Exchange(r.Context(), r.URL.Query().Get("code"),
-		oauth2.SetAuthURLParam("code_verifier", codeVerifier),
+	oauth2Token, rawIDToken, err := oidcClient.ExchangeCodeForToken(
+		r.Context(),
+		r.URL.Query().Get("code"),
+		pkce.CodeVerifier,
+		pkce.RedirectURI,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to exchange token: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Extract ID token
-	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
-	if !ok {
-		http.Error(w, "No id_token in token response", http.StatusInternalServerError)
 		return
 	}
 
@@ -256,29 +149,15 @@ func userinfoHandler(w http.ResponseWriter, r *http.Request) {
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
 	// Parse JWT without verification (we'll verify in service-b)
-	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
+	userInfo, err := oidc.ParseTokenUnsafe(tokenString)
 	if err != nil {
 		http.Error(w, "Invalid token format", http.StatusBadRequest)
 		return
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		http.Error(w, "Invalid token claims", http.StatusBadRequest)
-		return
-	}
-
-	// Return user info from JWT claims
+	// Return user info
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"sub":         claims["sub"],
-		"email":       claims["email"],
-		"given_name":  claims["given_name"],
-		"family_name": claims["family_name"],
-		"groups":      claims["groups"],
-		"iss":         claims["iss"],
-		"aud":         claims["aud"],
-	})
+	json.NewEncoder(w).Encode(userInfo)
 }
 
 func helloHandler(w http.ResponseWriter, r *http.Request) {
