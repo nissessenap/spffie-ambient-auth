@@ -3,10 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
-	"log"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
@@ -16,45 +13,12 @@ import (
 
 type OIDCHandler struct {
 	OIDCClient *oidc.Client
-	Templates  *template.Template
 	Config     *config.Config
 }
 
-type LoginData struct {
-	AuthURL string
-	State   string
-}
-
 func NewOIDCHandler(oidcClient *oidc.Client, cfg *config.Config) *OIDCHandler {
-	var tmpl *template.Template
-	var err error
-	
-	// Try to load templates from files first
-	tmpl, err = template.ParseGlob(filepath.Join("templates", "*.html"))
-	if err != nil {
-		log.Printf("[warning] Failed to load templates from files: %v, using fallback", err)
-		// Fallback to embedded template if file not found
-		tmpl = template.New("login.html")
-		fallbackHTML := `<!DOCTYPE html>
-<html>
-<head>
-    <title>Login</title>
-</head>
-<body>
-    <h1>Login to Service A</h1>
-    <p>Click the link below to authenticate:</p>
-    <a href="{{.AuthURL}}">Login with OIDC Provider</a>
-    <p>State: {{.State}}</p>
-</body>
-</html>`
-		tmpl, _ = tmpl.Parse(fallbackHTML)
-	} else {
-		log.Printf("[startup] Successfully loaded templates from files")
-	}
-
 	return &OIDCHandler{
 		OIDCClient: oidcClient,
-		Templates:  tmpl,
 		Config:     cfg,
 	}
 }
@@ -77,20 +41,23 @@ func (h *OIDCHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return HTML response with template
+	// Return HTML response with direct HTML
 	w.Header().Set("Content-Type", "text/html")
-	data := LoginData{
-		AuthURL: authURL,
-		State:   state,
-	}
-
-	// Use the template file (template name is just "login.html" when loaded from file)
-	templateName := "login.html"
-	if err := h.Templates.ExecuteTemplate(w, templateName, data); err != nil {
-		// Simple fallback if template fails
-		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	
+	htmlTemplate := `<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h1>Login to Service A</h1>
+    <p>Click the link below to authenticate:</p>
+    <a href="` + authURL + `">Login with OIDC Provider</a>
+    <p>State: ` + state + `</p>
+</body>
+</html>`
+	
+	fmt.Fprint(w, htmlTemplate)
 }
 
 func (h *OIDCHandler) LoginURLHandler(w http.ResponseWriter, r *http.Request) {
