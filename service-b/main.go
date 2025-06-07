@@ -9,10 +9,22 @@ import (
 	"strings"
 
 	"github.com/NissesSenap/spffie-ambient-auth/spicedb"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
+
+// UserInfo represents the authenticated user information from JWT
+type UserInfo struct {
+	Username string   `json:"preferred_username"`
+	Groups   []string `json:"groups"`
+	Sub      string   `json:"sub"`
+	Email    string   `json:"email"`
+}
+
+// Global OIDC verifier
+var oidcVerifier *oidc.IDTokenVerifier
 
 // ValidateSVID creates a TLS authorization function that just validates the SVID format
 // The actual authorization checks will be done in the specific HTTP handlers
@@ -23,7 +35,7 @@ func ValidateSVID(ctx context.Context) tlsconfig.Authorizer {
 		if err != nil {
 			return fmt.Errorf("failed to validate SVID format: %w", err)
 		}
-		
+
 		log.Printf("[tls] Connection established with peer: %s", subject)
 		return nil
 	}
@@ -47,7 +59,7 @@ func logPeerInfo(r *http.Request) string {
 func documentHandler(w http.ResponseWriter, r *http.Request) {
 	// Log the request details to help with debugging
 	log.Printf("[debug] documentHandler received request for path: %s, method: %s", r.URL.Path, r.Method)
-	
+
 	spiffeID := logPeerInfo(r)
 	if spiffeID == "" {
 		http.Error(w, "No SPIFFE ID found in request", http.StatusUnauthorized)
@@ -57,7 +69,7 @@ func documentHandler(w http.ResponseWriter, r *http.Request) {
 	// Extract document ID from path
 	pathParts := strings.Split(r.URL.Path, "/")
 	log.Printf("[debug] Path parts: %v", pathParts)
-	
+
 	if len(pathParts) < 3 {
 		http.Error(w, "Invalid path, should be /documents/{id}", http.StatusBadRequest)
 		return
@@ -140,7 +152,7 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	logPeerInfo(r)
-	
+
 	// Log the request details to help with debugging
 	log.Printf("[debug] helloHandler received request for path: %s, method: %s", r.URL.Path, r.Method)
 
@@ -174,7 +186,7 @@ func main() {
 
 	// Set up the HTTP handlers
 	mux := http.NewServeMux()
-	
+
 	// Make sure the document handler gets precedence for /documents/ paths
 	mux.HandleFunc("/documents/", documentHandler)
 	mux.HandleFunc("/hello", helloHandler)

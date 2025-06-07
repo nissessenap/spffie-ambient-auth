@@ -5,6 +5,8 @@ go 1.24.1
 require (
 	github.com/NissesSenap/spffie-ambient-auth/spicedb v0.0.0-00010101000000-000000000000
 	github.com/spiffe/go-spiffe/v2 v2.5.0
+	github.com/coreos/go-oidc/v3 v3.10.0
+	github.com/golang-jwt/jwt/v5 v5.2.1
 )
 
 replace github.com/NissesSenap/spffie-ambient-auth/spicedb => ../spicedb
