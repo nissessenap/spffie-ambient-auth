@@ -32,16 +32,15 @@ func initOIDC() error {
 	return nil
 }
 
-func loginHandler(w http.ResponseWriter, r *http.Request) {
+// generateAuthURL is a helper function that creates the OIDC authorization URL and sets up state
+func generateAuthURL(w http.ResponseWriter, r *http.Request) (string, string, error) {
 	if oidcClient == nil {
-		http.Error(w, "OIDC not initialized", http.StatusInternalServerError)
-		return
+		return "", "", fmt.Errorf("OIDC not initialized")
 	}
 
 	pkce, err := oidcClient.GeneratePKCE()
 	if err != nil {
-		http.Error(w, "Failed to generate PKCE", http.StatusInternalServerError)
-		return
+		return "", "", fmt.Errorf("failed to generate PKCE: %w", err)
 	}
 
 	// Determine redirect URI based on how we're accessed
@@ -59,8 +58,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	secret := []byte("your-secret-key") // In production, use a proper secret
 	tokenString, err := oidc.CreateStateJWT(pkce, secret)
 	if err != nil {
-		http.Error(w, "Failed to create state token", http.StatusInternalServerError)
-		return
+		return "", "", fmt.Errorf("failed to create state token: %w", err)
 	}
 
 	// Store state in cookie
@@ -75,6 +73,15 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Build authorization URL
 	authURL := oidcClient.BuildAuthURL(pkce, redirectURI)
+	return authURL, pkce.State, nil
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	authURL, state, err := generateAuthURL(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	// Check if request wants JSON response
 	if r.Header.Get("Accept") == "application/json" {
@@ -82,7 +89,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"auth_url": authURL,
-			"state":    pkce.State,
+			"state":    state,
 		})
 		return
 	}
@@ -128,47 +135,17 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
         <p><strong>State:</strong> %s</p>
     </div>
 </body>
-</html>`, authURL, authURL, pkce.State)
+</html>`, authURL, authURL, state)
 
 	fmt.Fprint(w, html)
 }
 
 func loginURLHandler(w http.ResponseWriter, r *http.Request) {
-	if oidcClient == nil {
-		http.Error(w, "OIDC not initialized", http.StatusInternalServerError)
-		return
-	}
-
-	pkce, err := oidcClient.GeneratePKCE()
+	authURL, _, err := generateAuthURL(w, r)
 	if err != nil {
-		http.Error(w, "Failed to generate PKCE", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	// Determine redirect URI based on how we're accessed
-	redirectURI := "http://localhost:8081/callback"
-	pkce.RedirectURI = redirectURI
-
-	// Create state JWT for stateless operation
-	secret := []byte("your-secret-key") // In production, use a proper secret
-	tokenString, err := oidc.CreateStateJWT(pkce, secret)
-	if err != nil {
-		http.Error(w, "Failed to create state token", http.StatusInternalServerError)
-		return
-	}
-
-	// Store state in cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     "oidc_state",
-		Value:    tokenString,
-		Path:     "/",
-		MaxAge:   600, // 10 minutes
-		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
-	})
-
-	// Build authorization URL
-	authURL := oidcClient.BuildAuthURL(pkce, redirectURI)
 
 	// Return just the raw URL as plain text
 	w.Header().Set("Content-Type", "text/plain")
