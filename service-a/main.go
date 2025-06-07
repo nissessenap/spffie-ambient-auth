@@ -76,12 +76,103 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	// Build authorization URL
 	authURL := oidcClient.BuildAuthURL(pkce, redirectURI)
 
-	// Return JSON response with auth URL for API clients
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"auth_url": authURL,
-		"state":    pkce.State,
+	// Check if request wants JSON response
+	if r.Header.Get("Accept") == "application/json" {
+		// Return JSON response with auth URL for API clients
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"auth_url": authURL,
+			"state":    pkce.State,
+		})
+		return
+	}
+
+	// Return HTML response with clickable link for browser usage
+	w.Header().Set("Content-Type", "text/html")
+	html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OIDC Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .login-container { max-width: 600px; margin: 0 auto; }
+        .login-button { 
+            display: inline-block; 
+            background-color: #007bff; 
+            color: white; 
+            padding: 10px 20px; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin: 20px 0;
+        }
+        .login-button:hover { background-color: #0056b3; }
+        .url-box { 
+            background-color: #f8f9fa; 
+            border: 1px solid #dee2e6; 
+            padding: 10px; 
+            border-radius: 5px; 
+            word-break: break-all; 
+            font-family: monospace; 
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>OIDC Login</h1>
+        <p>Click the button below to start the authentication process:</p>
+        <a href="%s" class="login-button">Sign In with Keycloak</a>
+        <p>Or copy this URL:</p>
+        <div class="url-box">%s</div>
+        <p><strong>State:</strong> %s</p>
+    </div>
+</body>
+</html>`, authURL, authURL, pkce.State)
+
+	fmt.Fprint(w, html)
+}
+
+func loginURLHandler(w http.ResponseWriter, r *http.Request) {
+	if oidcClient == nil {
+		http.Error(w, "OIDC not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	pkce, err := oidcClient.GeneratePKCE()
+	if err != nil {
+		http.Error(w, "Failed to generate PKCE", http.StatusInternalServerError)
+		return
+	}
+
+	// Determine redirect URI based on how we're accessed
+	redirectURI := "http://localhost:8081/callback"
+	pkce.RedirectURI = redirectURI
+
+	// Create state JWT for stateless operation
+	secret := []byte("your-secret-key") // In production, use a proper secret
+	tokenString, err := oidc.CreateStateJWT(pkce, secret)
+	if err != nil {
+		http.Error(w, "Failed to create state token", http.StatusInternalServerError)
+		return
+	}
+
+	// Store state in cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "oidc_state",
+		Value:    tokenString,
+		Path:     "/",
+		MaxAge:   600, // 10 minutes
+		HttpOnly: true,
+		Secure:   false, // Set to true in production with HTTPS
 	})
+
+	// Build authorization URL
+	authURL := oidcClient.BuildAuthURL(pkce, redirectURI)
+
+	// Return just the raw URL as plain text
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, authURL)
 }
 
 func callbackHandler(w http.ResponseWriter, r *http.Request) {
@@ -314,6 +405,7 @@ func main() {
 	// Start plain HTTP server for OIDC endpoints first (independent of SPIRE)
 	plainMux := http.NewServeMux()
 	plainMux.HandleFunc("/login", loginHandler)
+	plainMux.HandleFunc("/login-url", loginURLHandler) // Raw URL endpoint
 	plainMux.HandleFunc("/callback", callbackHandler)
 	plainMux.HandleFunc("/userinfo", userinfoHandler)
 	plainMux.HandleFunc("/hello", helloHandler)
@@ -365,6 +457,7 @@ func main() {
 
 	// OIDC endpoints
 	mux.HandleFunc("/login", loginHandler)
+	mux.HandleFunc("/login-url", loginURLHandler) // Raw URL endpoint
 	mux.HandleFunc("/callback", callbackHandler)
 	mux.HandleFunc("/userinfo", userinfoHandler)
 
