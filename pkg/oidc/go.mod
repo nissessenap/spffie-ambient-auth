@@ -1,6 +1,6 @@
 module github.com/NissesSenap/spffie-ambient-auth/pkg/oidc
 
-go 1.21
+go 1.24
 
 require (
 	github.com/coreos/go-oidc/v3 v3.9.0

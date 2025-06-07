@@ -345,14 +345,6 @@ func main() {
 		TLSConfig: tlsConfig,
 	}
 
-	// Start mTLS server
-	go func() {
-		log.Println("[startup] service-a mTLS server listening on :8080")
-		if err := server.ListenAndServeTLS("", ""); err != nil {
-			log.Fatalf("[fatal] ListenAndServeTLS failed: %v", err)
-		}
-	}()
-
 	// Start plain HTTP server for OIDC endpoints (needed for development)
 	plainMux := http.NewServeMux()
 	plainMux.HandleFunc("/login", loginHandler)
@@ -360,8 +352,22 @@ func main() {
 	plainMux.HandleFunc("/userinfo", userinfoHandler)
 	plainMux.HandleFunc("/hello", helloHandler)
 
-	log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
-	if err := http.ListenAndServe(":8081", plainMux); err != nil {
-		log.Fatalf("[fatal] Plain HTTP server failed: %v", err)
+	plainServer := &http.Server{
+		Addr:    ":8081",
+		Handler: plainMux,
+	}
+
+	// Start plain HTTP server
+	go func() {
+		log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
+		if err := plainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("[fatal] Plain HTTP server failed: %v", err)
+		}
+	}()
+
+	// Start mTLS server (blocking)
+	log.Println("[startup] service-a mTLS server listening on :8080")
+	if err := server.ListenAndServeTLS("", ""); err != nil {
+		log.Fatalf("[fatal] ListenAndServeTLS failed: %v", err)
 	}
 }

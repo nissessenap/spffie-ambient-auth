@@ -53,7 +53,7 @@ type UserInfo struct {
 // NewClient creates a new OIDC client with configuration from environment variables
 func NewClient(ctx context.Context) (*Client, error) {
 	config := Config{
-		KeycloakURL: getEnvOrDefault("KEYCLOAK_URL", "http://keycloak.keycloak.svc.cluster.local:80"),
+		KeycloakURL: getEnvOrDefault("KEYCLOAK_URL", "http://keycloak.keycloak.svc.cluster.local"),
 		ClientID:    getEnvOrDefault("OIDC_CLIENT_ID", "myapp-client"),
 		Realm:       getEnvOrDefault("OIDC_REALM", "myapp"),
 	}
