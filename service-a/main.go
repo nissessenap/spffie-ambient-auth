@@ -19,7 +19,8 @@ import (
 var oidcClient *oidc.Client
 
 func initOIDC() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	client, err := oidc.NewClient(ctx)
 	if err != nil {
 		return err
@@ -307,16 +308,46 @@ func main() {
 		log.Printf("[warning] Failed to initialize OIDC: %v (OIDC endpoints will not work)", err)
 	}
 
-	// Connect to the SPIRE Workload API
-	source, err := workloadapi.NewX509Source(ctx)
+	// Start plain HTTP server for OIDC endpoints first (independent of SPIRE)
+	plainMux := http.NewServeMux()
+	plainMux.HandleFunc("/login", loginHandler)
+	plainMux.HandleFunc("/callback", callbackHandler)
+	plainMux.HandleFunc("/userinfo", userinfoHandler)
+	plainMux.HandleFunc("/hello", helloHandler)
+
+	plainServer := &http.Server{
+		Addr:    ":8081",
+		Handler: plainMux,
+	}
+
+	// Start plain HTTP server
+	go func() {
+		log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
+		if err := plainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[error] Plain HTTP server failed: %v", err)
+		}
+	}()
+
+	// Try to connect to the SPIRE Workload API (with timeout)
+	log.Println("[startup] Attempting to connect to SPIRE Workload API...")
+	
+	// Create a context with timeout for SPIRE connection
+	spireCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	
+	source, err := workloadapi.NewX509Source(spireCtx)
 	if err != nil {
-		log.Fatalf("[fatal] Unable to create X509Source: %v", err)
+		log.Printf("[warning] Unable to create X509Source: %v (mTLS server will not start)", err)
+		// Keep running with just the plain HTTP server
+		select {}
 	}
 	defer source.Close()
 
 	svid, err := source.GetX509SVID()
 	if err != nil {
-		log.Fatalf("[fatal] Unable to fetch X509SVID: %v", err)
+		log.Printf("[warning] Unable to fetch X509SVID: %v (mTLS server will not start)", err)
+		// Keep running with just the plain HTTP server
+		select {}
 	}
 	log.Printf("[startup] Got SVID: %s", svid.ID)
 
@@ -344,26 +375,6 @@ func main() {
 		Handler:   mux,
 		TLSConfig: tlsConfig,
 	}
-
-	// Start plain HTTP server for OIDC endpoints (needed for development)
-	plainMux := http.NewServeMux()
-	plainMux.HandleFunc("/login", loginHandler)
-	plainMux.HandleFunc("/callback", callbackHandler)
-	plainMux.HandleFunc("/userinfo", userinfoHandler)
-	plainMux.HandleFunc("/hello", helloHandler)
-
-	plainServer := &http.Server{
-		Addr:    ":8081",
-		Handler: plainMux,
-	}
-
-	// Start plain HTTP server
-	go func() {
-		log.Println("[startup] service-a plain HTTP server listening on :8081 (for OIDC endpoints)")
-		if err := plainServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("[fatal] Plain HTTP server failed: %v", err)
-		}
-	}()
 
 	// Start mTLS server (blocking)
 	log.Println("[startup] service-a mTLS server listening on :8080")
