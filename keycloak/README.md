@@ -35,89 +35,81 @@ Then access: <http://localhost:8080>
 
 ## Setup OIDC Client with PKCE (Public Client)
 
-### Option 1: Using Keycloak Admin Console (GUI)
+### Option 2: Using kubectl and Keycloak REST API (Recommended for PoC)
 
-1. **Access Admin Console**: Go to <http://localhost:8080> and login
-2. **Create/Select Realm**:
-   - Use "master" realm or create a new one (Recommended: create "myapp" realm)
-3. **Create Client**:
-   - Go to `Clients` → `Create client`
-   - **Client ID**: `myapp-client`
-   - **Client Type**: `OpenID Connect`
-   - Click `Next`
-4. **Capability Config**:
-   - ✅ **Client authentication**: `OFF` (This makes it a public client)
-   - ✅ **Authorization**: `OFF`
-   - ✅ **Authentication flow**: Enable `Standard flow`
-   - ✅ **Direct access grants**: `ON` (optional)
-   - Click `Next`
-5. **Login Settings**:
-   - **Valid redirect URIs**: `http://localhost:3000/callback` (adjust for your app)
-   - **Valid post logout redirect URIs**: `http://localhost:3000`
-   - **Web origins**: `http://localhost:3000`
-   - Click `Save`
-6. **Advanced Settings** (Important for PKCE):
-   - Go to the client → `Advanced` tab
-   - **Proof Key for Code Exchange Code Challenge Method**: `S256`
-   - Click `Save`
+Complete setup script for Keycloak configuration:
 
-### Option 2: Using kubectl and Keycloak REST API
-
-Create the client programmatically:
-
-```shell
-# Get admin access token
-ADMIN_TOKEN=$(kubectl exec -n keycloak keycloak-0 -- curl -s \
-  -d "client_id=admin-cli" \
-  -d "username=admin" \
-  -d "password=admin" \
-  -d "grant_type=password" \
-  "http://localhost:8080/realms/master/protocol/openid-connect/token" | \
-  jq -r '.access_token')
-
-# Create the OIDC client with PKCE
-kubectl exec -n keycloak keycloak-0 -- curl -s \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "clientId": "myapp-client",
-    "name": "My Application Client",
-    "description": "OIDC Public Client with PKCE",
-    "enabled": true,
-    "clientAuthenticatorType": "client-secret",
-    "publicClient": true,
-    "standardFlowEnabled": true,
-    "directAccessGrantsEnabled": true,
-    "redirectUris": ["http://localhost:3000/callback"],
-    "postLogoutRedirectUris": ["http://localhost:3000"],
-    "webOrigins": ["http://localhost:3000"],
-    "attributes": {
-      "pkce.code.challenge.method": "S256"
-    }
-  }' \
-  "http://localhost:8080/admin/realms/master/clients"
-```
+See [setup-keycloak.sh](setup-keycloak.sh)
 
 ## Client Configuration Summary
 
 Your OIDC client will have these settings:
 
+- **Realm**: `myapp` (instead of master for better isolation)
 - **Client ID**: `myapp-client`
 - **Client Type**: Public (no client secret required)
 - **PKCE**: Enabled with S256 method
 - **Grant Types**: Authorization Code with PKCE
-- **Redirect URI**: `http://localhost:3000/callback`
+- **Redirect URIs**: `http://localhost:3000/callback`, `http://localhost:8090/callback`
+- **Groups Claim**: Included in JWT tokens for authorization
+
+## Test Users and Groups
+
+| Username | Password    | Group   | Permissions |
+|----------|-------------|---------|-------------|
+| edvin    | password123 | admin   | Full access (view, edit, delete) |
+| alice    | password123 | editors | View and edit documents |
+| bob      | password123 | viewers | View documents only |
 
 ## Testing the OIDC Flow
 
 You can test the OIDC flow with PKCE using these endpoints:
 
-- **Authorization Endpoint**: `http://localhost:8080/realms/master/protocol/openid-connect/auth`
-- **Token Endpoint**: `http://localhost:8080/realms/master/protocol/openid-connect/token`
-- **UserInfo Endpoint**: `http://localhost:8080/realms/master/protocol/openid-connect/userinfo`
+- **Authorization Endpoint**: `http://localhost:8080/realms/myapp/protocol/openid-connect/auth`
+- **Token Endpoint**: `http://localhost:8080/realms/myapp/protocol/openid-connect/token`
+- **UserInfo Endpoint**: `http://localhost:8080/realms/myapp/protocol/openid-connect/userinfo`
+- **JWKS Endpoint**: `http://localhost:8080/realms/myapp/protocol/openid-connect/certs`
 
 Example authorization URL:
 
 ```
-http://localhost:8080/realms/master/protocol/openid-connect/auth?client_id=myapp-client&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid profile email&code_challenge=CHALLENGE&code_challenge_method=S256&state=STATE
+http://localhost:8080/realms/myapp/protocol/openid-connect/auth?client_id=myapp-client&redirect_uri=http://localhost:3000/callback&response_type=code&scope=openid profile email groups&code_challenge=CHALLENGE&code_challenge_method=S256&state=STATE
 ```
+
+## JWT Token Structure
+
+The JWT tokens will include:
+
+```json
+{
+  "sub": "edvin",
+  "email": "edvin@example.com", 
+  "given_name": "Edvin",
+  "family_name": "Admin",
+  "groups": ["admin"],
+  "iss": "http://localhost:8080/realms/myapp",
+  "aud": "myapp-client"
+}
+```
+
+## Integration with Services
+
+**Service-A (Frontend)**:
+
+- Port-forward: `kubectl port-forward -n app svc/service-a 8090:8080`
+- Handles OIDC login flow
+- Forwards JWT tokens to Service-B
+
+**Service-B (Authorization)**:
+
+- Validates JWT against Keycloak JWKS endpoint
+- Extracts `sub` (username) and `groups` claims
+- Maps to SpiceDB: `keycloak:user:{sub}` in `keycloak:group:{group}`
+- Checks permissions via SpiceDB
+
+**Security Flow**:
+
+1. User authenticates with Keycloak via Service-A
+2. Service-A forwards JWT to Service-B over SPIFFE mTLS
+3. Service-B validates JWT signature against Keycloak
+4. Service-B authorizes via SpiceDB using JWT claims
