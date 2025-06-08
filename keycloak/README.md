@@ -96,7 +96,7 @@ The JWT tokens will include:
 
 **Service-A (Frontend)**:
 
-- Port-forward: `kubectl port-forward -n app svc/service-a 8090:8080`
+- Port-forward: `kubectl port-forward -n app svc/service-a 8081:8081`
 - Handles OIDC login flow
 - Forwards JWT tokens to Service-B
 
