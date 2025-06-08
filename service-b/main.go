@@ -191,6 +191,12 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	ctx := context.Background()
 
+	// Enable development mode for testing with port-forwarding
+	if os.Getenv("DEV_MODE") == "" {
+		os.Setenv("DEV_MODE", "true")
+		log.Printf("[config] DEV_MODE enabled for port-forward compatibility")
+	}
+
 	// Create OIDC client for JWT verification against Keycloak
 	oidcClient, err := oidc.NewClient(ctx)
 	if err != nil {

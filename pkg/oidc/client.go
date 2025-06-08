@@ -20,6 +20,7 @@ type Client struct {
 	Provider     *oidc.Provider
 	OAuth2Config oauth2.Config
 	Verifier     *oidc.IDTokenVerifier
+	DevVerifier  *oidc.IDTokenVerifier // For development with localhost issuer
 	Config       Config
 }
 
@@ -86,6 +87,19 @@ func NewClient(ctx context.Context) (*Client, error) {
 		},
 		Verifier: provider.Verifier(&oidc.Config{ClientID: config.ClientID}),
 		Config:   config,
+	}
+
+	// For development mode, also create a verifier for localhost issuer
+	if os.Getenv("DEV_MODE") == "true" {
+		devIssuerURL := fmt.Sprintf("http://localhost:8080/realms/%s", config.Realm)
+		log.Printf("[oidc] Creating development verifier for issuer: %s", devIssuerURL)
+		
+		devProvider, err := oidc.NewProvider(ctx, devIssuerURL)
+		if err != nil {
+			log.Printf("[oidc] Warning: Failed to create development provider: %v", err)
+		} else {
+			client.DevVerifier = devProvider.Verifier(&oidc.Config{ClientID: config.ClientID})
+		}
 	}
 
 	log.Println("[oidc] OIDC client initialized successfully")
@@ -161,10 +175,20 @@ func (c *Client) ExchangeCodeForToken(ctx context.Context, code, codeVerifier, r
 
 // ValidateToken validates a JWT token and returns user information
 func (c *Client) ValidateToken(ctx context.Context, tokenString string) (*UserInfo, error) {
-	// Verify the token against Keycloak
+	// Try the primary verifier first (cluster-internal issuer)
 	token, err := c.Verifier.Verify(ctx, tokenString)
-	if err != nil {
+	if err != nil && c.DevVerifier != nil {
+		// If primary verification fails and we have a dev verifier, try it
+		log.Printf("[oidc] Primary verification failed, trying development verifier: %v", err)
+		token, err = c.DevVerifier.Verify(ctx, tokenString)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify token with both verifiers: %w", err)
+		}
+		log.Printf("[oidc] Token verified successfully with development verifier")
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to verify token: %w", err)
+	} else {
+		log.Printf("[oidc] Token verified successfully with primary verifier")
 	}
 
 	// Extract claims
