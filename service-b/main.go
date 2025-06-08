@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/NissesSenap/spffie-ambient-auth/spicedb"
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
@@ -22,9 +21,6 @@ type UserInfo struct {
 	Sub      string   `json:"sub"`
 	Email    string   `json:"email"`
 }
-
-// Global OIDC verifier
-var oidcVerifier *oidc.IDTokenVerifier
 
 // ValidateSVID creates a TLS authorization function that just validates the SVID format
 // The actual authorization checks will be done in the specific HTTP handlers
