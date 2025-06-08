@@ -94,11 +94,11 @@ func NewClient(ctx context.Context) (*Client, error) {
 	if os.Getenv("DEV_MODE") == "true" {
 		devIssuerURL := fmt.Sprintf("http://localhost:8080/realms/%s", config.Realm)
 		log.Printf("[oidc] Attempting to create development verifier for issuer: %s", devIssuerURL)
-		
+
 		// Create a context with timeout for the development provider
 		devCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
-		
+
 		devProvider, err := oidc.NewProvider(devCtx, devIssuerURL)
 		if err != nil {
 			log.Printf("[oidc] Development provider not available (normal for in-cluster services): %v", err)
@@ -319,7 +319,7 @@ func (c *Client) validateLocalhostToken(ctx context.Context, tokenString string)
 	}
 
 	log.Printf("[oidc] Accepting localhost-issued token for development (issuer: %s)", issuer)
-	
+
 	// For development purposes, we'll trust localhost-issued tokens
 	// In production, you should still validate the signature against Keycloak's JWKS
 	groups := []string{}
