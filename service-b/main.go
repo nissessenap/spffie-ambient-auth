@@ -223,7 +223,7 @@ func main() {
 	mux.HandleFunc("/hello", helloHandler)
 
 	// Use default port for service-b if not specified
-	port := "8081"
+	port := "8080"
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		port = envPort
 	}

@@ -54,7 +54,7 @@ wget --no-check-certificate http://service-a:8081/documents/view?id=doc1 -O -
 wget --no-check-certificate http://service-a:8081/documents/edit?id=doc1 -O -
 
 # Delete document 1
-wget --no-check-certificate http://service-a:8081/documents/delete?id=doc1 -O -
+wget --no-check-certificate http://localhost:8081/documents/delete?id=doc1 -O -
 ```
 
 #### Document 2 (View and Edit Only)
