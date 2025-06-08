@@ -112,8 +112,6 @@ zed relationship create "proxy_access:doc3_as_bob" "service" "service:spiffe-exa
   --endpoint localhost:50051 --insecure --token "averysecretpresharedkey" || echo "Warning: Failed to create service relationship for doc3_as_bob"
 zed relationship create "proxy_access:doc3_as_bob" "document" "document:doc3" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 zed relationship create "proxy_access:doc3_as_bob" "user_is_viewer_group" "group:viewers" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-zed relationship create "proxy_access:doc1_as_alice" "document" "document:doc1" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
-zed relationship create "proxy_access:doc1_as_alice" "user_is_viewer_group" "group:interns" --endpoint localhost:50051 --insecure --token "averysecretpresharedkey"
 
 # Clean up the port-forward
 kill $PF_PID
