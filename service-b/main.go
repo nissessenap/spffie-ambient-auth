@@ -100,8 +100,8 @@ func documentHandler(oidcClient *oidc.Client) http.HandlerFunc {
 		documentID := pathParts[2]
 
 		// Create SpiceDB subject from JWT username
-		// Map JWT user to SpiceDB format: keycloak:user:{username}
-		subject := fmt.Sprintf("keycloak:user:%s", userInfo.Subject)
+		// Map JWT user to SpiceDB format: user:{username}
+		subject := fmt.Sprintf("user:%s", userInfo.Subject)
 
 		// Create SpiceDB client
 		ctx := r.Context()
