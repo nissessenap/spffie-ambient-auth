@@ -6,21 +6,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
+	"github.com/NissesSenap/spffie-ambient-auth/pkg/oidc"
 	"github.com/NissesSenap/spffie-ambient-auth/spicedb"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
-
-// UserInfo represents the authenticated user information from JWT
-type UserInfo struct {
-	Username string   `json:"preferred_username"`
-	Groups   []string `json:"groups"`
-	Sub      string   `json:"sub"`
-	Email    string   `json:"email"`
-}
 
 // ValidateSVID creates a TLS authorization function that just validates the SVID format
 // The actual authorization checks will be done in the specific HTTP handlers
@@ -51,91 +45,125 @@ func logPeerInfo(r *http.Request) string {
 	return ""
 }
 
+// extractBearerToken extracts the JWT token from Authorization header
+func extractBearerToken(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("missing Authorization header")
+	}
+
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return "", fmt.Errorf("invalid Authorization header format")
+	}
+
+	return strings.TrimPrefix(authHeader, "Bearer "), nil
+}
+
 // documentHandler handles document operations (view/edit/delete)
-func documentHandler(w http.ResponseWriter, r *http.Request) {
-	// Log the request details to help with debugging
-	log.Printf("[debug] documentHandler received request for path: %s, method: %s", r.URL.Path, r.Method)
+func documentHandler(oidcClient *oidc.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Log the request details to help with debugging
+		log.Printf("[debug] documentHandler received request for path: %s, method: %s", r.URL.Path, r.Method)
 
-	spiffeID := logPeerInfo(r)
-	if spiffeID == "" {
-		http.Error(w, "No SPIFFE ID found in request", http.StatusUnauthorized)
-		return
-	}
+		spiffeID := logPeerInfo(r)
+		if spiffeID == "" {
+			http.Error(w, "No SPIFFE ID found in request", http.StatusUnauthorized)
+			return
+		}
 
-	// Extract document ID from path
-	pathParts := strings.Split(r.URL.Path, "/")
-	log.Printf("[debug] Path parts: %v", pathParts)
+		// Extract JWT token from Authorization header
+		tokenString, err := extractBearerToken(r)
+		if err != nil {
+			log.Printf("[error] Failed to extract bearer token: %v", err)
+			http.Error(w, "Missing or invalid Authorization header", http.StatusUnauthorized)
+			return
+		}
 
-	if len(pathParts) < 3 {
-		http.Error(w, "Invalid path, should be /documents/{id}", http.StatusBadRequest)
-		return
-	}
-	documentID := pathParts[2]
+		// Verify JWT token against Keycloak using OIDC client
+		userInfo, err := oidcClient.ValidateToken(r.Context(), tokenString)
+		if err != nil {
+			log.Printf("[error] JWT verification failed: %v", err)
+			http.Error(w, "Invalid JWT token", http.StatusUnauthorized)
+			return
+		}
 
-	// Get subject name in SpiceDB format
-	subject, err := spicedb.GetSVIDInSSpaceDBFormat(spiffeID)
-	if err != nil {
-		http.Error(w, "Invalid SPIFFE ID format", http.StatusBadRequest)
-		return
-	}
+		log.Printf("[jwt] Verified JWT for user: %s, groups: %v", userInfo.Subject, userInfo.Groups)
 
-	// Create SpiceDB client
-	ctx := r.Context()
-	spicedbClient, err := spicedb.NewClient(ctx)
-	if err != nil {
-		log.Printf("[error] Failed to create SpiceDB client: %v", err)
-		http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)
-		return
-	}
+		// Extract document ID from path
+		pathParts := strings.Split(r.URL.Path, "/")
+		log.Printf("[debug] Path parts: %v", pathParts)
 
-	// Check specific permission based on HTTP method
-	var permissionToCheck string
-	var operation string
+		if len(pathParts) < 3 {
+			http.Error(w, "Invalid path, should be /documents/{id}", http.StatusBadRequest)
+			return
+		}
+		documentID := pathParts[2]
 
-	switch r.Method {
-	case http.MethodGet:
-		permissionToCheck = "view"
-		operation = "view"
-	case http.MethodPut:
-		permissionToCheck = "edit"
-		operation = "edit"
-	case http.MethodDelete:
-		permissionToCheck = "delete"
-		operation = "delete"
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+		// Create SpiceDB subject from JWT username
+		// Map JWT user to SpiceDB format: keycloak:user:{username}
+		subject := fmt.Sprintf("keycloak:user:%s", userInfo.Subject)
 
-	// Check permission
-	log.Printf("[authz] Checking if %s can %s document %s", subject, operation, documentID)
-	allowed, err := spicedbClient.CheckPermission(ctx, documentID, permissionToCheck, subject)
-	if err != nil {
-		log.Printf("[error] Failed to check permission: %v", err)
-		http.Error(w, "Failed to check authorization", http.StatusInternalServerError)
-		return
-	}
+		// Create SpiceDB client
+		ctx := r.Context()
+		spicedbClient, err := spicedb.NewClient(ctx)
+		if err != nil {
+			log.Printf("[error] Failed to create SpiceDB client: %v", err)
+			http.Error(w, "Authorization service unavailable", http.StatusServiceUnavailable)
+			return
+		}
 
-	if !allowed {
-		log.Printf("[authz] Access denied: %s is not permitted to %s document %s", subject, operation, documentID)
-		http.Error(w, fmt.Sprintf("Not authorized to %s document %s", operation, documentID), http.StatusForbidden)
-		return
-	}
+		// Check specific permission based on HTTP method
+		var permissionToCheck string
+		var operation string
 
-	log.Printf("[authz] Access granted: %s is permitted to %s document %s", subject, operation, documentID)
+		switch r.Method {
+		case http.MethodGet:
+			permissionToCheck = "view"
+			operation = "view"
+		case http.MethodPut:
+			permissionToCheck = "edit"
+			operation = "edit"
+		case http.MethodDelete:
+			permissionToCheck = "delete"
+			operation = "delete"
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 
-	// Handle different operations
-	switch r.Method {
-	case http.MethodGet:
-		// View operation
-		fmt.Fprintf(w, "Retrieved document %s\n", documentID)
-		fmt.Fprintf(w, "Document content: This is a sample document content for %s\n", documentID)
-	case http.MethodPut:
-		// Edit operation
-		fmt.Fprintf(w, "Updated document %s successfully\n", documentID)
-	case http.MethodDelete:
-		// Delete operation
-		fmt.Fprintf(w, "Deleted document %s successfully\n", documentID)
+		// Check permission
+		log.Printf("[authz] Checking if %s can %s document %s", subject, operation, documentID)
+		allowed, err := spicedbClient.CheckPermission(ctx, documentID, permissionToCheck, subject)
+		if err != nil {
+			log.Printf("[error] Failed to check permission: %v", err)
+			http.Error(w, "Failed to check authorization", http.StatusInternalServerError)
+			return
+		}
+
+		if !allowed {
+			log.Printf("[authz] Access denied: %s is not permitted to %s document %s", subject, operation, documentID)
+			http.Error(w, fmt.Sprintf("Not authorized to %s document %s", operation, documentID), http.StatusForbidden)
+			return
+		}
+
+		log.Printf("[authz] Access granted: %s is permitted to %s document %s", subject, operation, documentID)
+
+		// Handle different operations
+		switch r.Method {
+		case http.MethodGet:
+			// View operation
+			fmt.Fprintf(w, "Retrieved document %s\n", documentID)
+			fmt.Fprintf(w, "Document content: This is a sample document content for %s\n", documentID)
+			fmt.Fprintf(w, "Accessed by user: %s (%s)\n", userInfo.Subject, userInfo.Email)
+		case http.MethodPut:
+			// Edit operation
+			fmt.Fprintf(w, "Updated document %s successfully\n", documentID)
+			fmt.Fprintf(w, "Updated by user: %s (%s)\n", userInfo.Subject, userInfo.Email)
+		case http.MethodDelete:
+			// Delete operation
+			fmt.Fprintf(w, "Deleted document %s successfully\n", documentID)
+			fmt.Fprintf(w, "Deleted by user: %s (%s)\n", userInfo.Subject, userInfo.Email)
+		}
 	}
 }
 
@@ -163,6 +191,13 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	ctx := context.Background()
 
+	// Create OIDC client for JWT verification against Keycloak
+	oidcClient, err := oidc.NewClient(ctx)
+	if err != nil {
+		log.Fatalf("Failed to create OIDC client: %v", err)
+	}
+	log.Printf("OIDC client initialized for Keycloak verification")
+
 	// Connect to the SPIRE Workload API
 	source, err := workloadapi.NewX509Source(ctx)
 	if err != nil {
@@ -184,15 +219,21 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Make sure the document handler gets precedence for /documents/ paths
-	mux.HandleFunc("/documents/", documentHandler)
+	mux.HandleFunc("/documents/", documentHandler(oidcClient))
 	mux.HandleFunc("/hello", helloHandler)
 
+	// Use default port for service-b if not specified
+	port := "8081"
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		port = envPort
+	}
+
 	server := &http.Server{
-		Addr:      ":8080",
+		Addr:      ":" + port,
 		Handler:   mux,
 		TLSConfig: tlsConfig,
 	}
 
-	log.Println("service-b mTLS server listening on :8080")
+	log.Printf("service-b mTLS server listening on :%s", port)
 	log.Fatal(server.ListenAndServeTLS("", "")) // certs are provided by SPIRE
 }
