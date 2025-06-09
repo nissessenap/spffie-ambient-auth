@@ -46,9 +46,13 @@ func logPeerInfo(r *http.Request) string {
 }
 
 // sanitizeUserID converts a user ID to be compatible with SpiceDB's validation rules
-// Replaces hyphens with underscores to ensure compatibility
+// Replaces special characters with underscores to ensure compatibility
 func sanitizeUserID(userID string) string {
-	return strings.ReplaceAll(userID, "-", "_")
+	// Replace common special characters that might cause issues
+	result := strings.ReplaceAll(userID, "-", "_")
+	result = strings.ReplaceAll(result, "@", "_at_")
+	result = strings.ReplaceAll(result, ".", "_")
+	return result
 }
 
 // extractBearerToken extracts the JWT token from Authorization header
@@ -105,10 +109,20 @@ func documentHandler(oidcClient *oidc.Client) http.HandlerFunc {
 		}
 		documentID := pathParts[2]
 
-		// Create SpiceDB subject from JWT username
-		// Use just the username, the object type will be set in the SpiceDB client
+		// Create SpiceDB subject from JWT user information
+		// Use first name as the user identifier to match SpiceDB relationships (e.g., user:edvin)
+		// Fall back to email, then subject UUID if first name is not available
+		var userIdentifier string
+		if userInfo.FirstName != "" {
+			userIdentifier = userInfo.FirstName
+		} else if userInfo.Email != "" {
+			userIdentifier = userInfo.Email
+		} else {
+			userIdentifier = userInfo.Subject
+		}
+		
 		// Sanitize the user ID to ensure compatibility with SpiceDB validation rules
-		subject := sanitizeUserID(userInfo.Subject)
+		subject := sanitizeUserID(userIdentifier)
 
 		// Create SpiceDB client
 		ctx := r.Context()
