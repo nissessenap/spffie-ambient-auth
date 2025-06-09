@@ -33,6 +33,8 @@ spec:
           env:
             - name: SPIFFE_ENDPOINT_SOCKET
               value: unix:///run/spire/agent-sockets/spire-agent.sock
+            - name: DEV_MODE
+              value: "true"
       volumes:
         - name: spire-agent-socket
           hostPath:

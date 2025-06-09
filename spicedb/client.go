@@ -46,7 +46,30 @@ func NewClient(ctx context.Context) (*Client, error) {
 }
 
 // CheckPermission checks if the subject has the specified permission on the resource
+// Automatically determines if the subject is a service (SPIFFE ID) or user (UUID)
 func (c *Client) CheckPermission(ctx context.Context, resource string, permission string, subject string) (bool, error) {
+	// Determine subject type based on format
+	subjectType := "user"
+	subjectId := subject
+
+	if strings.HasPrefix(subject, "spiffe://") {
+		subjectType = "service"
+		// Convert SPIFFE ID to SpiceDB format
+		converted, err := GetSVIDInSSpaceDBFormat(subject)
+		if err != nil {
+			return false, fmt.Errorf("failed to convert SPIFFE ID: %w", err)
+		}
+		subjectId = converted
+	} else {
+		// For user IDs, sanitize to ensure SpiceDB compatibility
+		subjectId = sanitizeUserID(subject)
+	}
+
+	return c.CheckPermissionWithType(ctx, resource, permission, subjectId, subjectType)
+}
+
+// CheckPermissionWithType checks permission with explicit subject type
+func (c *Client) CheckPermissionWithType(ctx context.Context, resource string, permission string, subject string, subjectType string) (bool, error) {
 	resp, err := c.client.CheckPermission(ctx, &pb.CheckPermissionRequest{
 		Resource: &pb.ObjectReference{
 			ObjectType: "document",
@@ -55,7 +78,7 @@ func (c *Client) CheckPermission(ctx context.Context, resource string, permissio
 		Permission: permission,
 		Subject: &pb.SubjectReference{
 			Object: &pb.ObjectReference{
-				ObjectType: "service",
+				ObjectType: subjectType,
 				ObjectId:   subject,
 			},
 		},
@@ -66,6 +89,12 @@ func (c *Client) CheckPermission(ctx context.Context, resource string, permissio
 	}
 
 	return resp.Permissionship == pb.CheckPermissionResponse_PERMISSIONSHIP_HAS_PERMISSION, nil
+}
+
+// sanitizeUserID sanitizes user IDs to be SpiceDB compatible
+// Replaces hyphens with underscores to avoid regex validation issues
+func sanitizeUserID(userID string) string {
+	return strings.ReplaceAll(userID, "-", "_")
 }
 
 // GetSVIDInSSpaceDBFormat converts a SPIFFE ID to the format used by SpiceDB schema

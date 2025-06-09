@@ -54,7 +54,7 @@ wget --no-check-certificate http://service-a:8081/documents/view?id=doc1 -O -
 wget --no-check-certificate http://service-a:8081/documents/edit?id=doc1 -O -
 
 # Delete document 1
-wget --no-check-certificate http://service-a:8081/documents/delete?id=doc1 -O -
+wget --no-check-certificate http://localhost:8081/documents/delete?id=doc1 -O -
 ```
 
 #### Document 2 (View and Edit Only)
@@ -82,6 +82,18 @@ wget --no-check-certificate http://service-a:8081/documents/edit?id=doc3 -O -
 # Delete document 3 (should fail with 403 Forbidden)
 wget --no-check-certificate http://service-a:8081/documents/delete?id=doc3 -O -
 ```
+
+## Keycloak
+
+Port-forwad to keycloak and service-a
+
+```shell
+kubectl port-forward -n app svc/service-a 8081:8081
+kubectl port-forward  --namespace keycloak svc/keycloak 8080:80
+```
+
+To get an OIDC token from keycloak run the following in your browser.
+[http://localhost:8081/login](http://localhost:8081/login)
 
 ## Authentik setup
 
