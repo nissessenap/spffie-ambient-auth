@@ -48,7 +48,7 @@ jobs:
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
           # Build and push without SBOM (we'll generate it separately)
-          ko build --sbom=none --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64 -t ${IMAGE_VERSION} \
+          ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64 -t ${IMAGE_VERSION} \
             --image-label org.opencontainers.image.title=spffie-ambient-auth-service-a \
             --image-label org.opencontainers.image.description="A test service for Spffie Ambient Auth" \
             --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
@@ -58,36 +58,6 @@ jobs:
           
           echo "IMAGE_DIGEST=$(cat ./image-digest | cut -d@ -f2)" >> $GITHUB_OUTPUT
 
-      - name: Generate SBOM
-        id: generate-sbom
-        env:
-          IMAGE_VERSION: ${{ github.ref_name }}
-          KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
-        run: |
-          # Create SBOM directory
-          mkdir -p ./sboms
-          
-          # Generate SBOM for the same build (but don't publish)
-          ko build --sbom=spdx --sbom-dir ./sboms --local --platform linux/amd64 service-a/main.go
-          
-          # Find the generated SBOM
-          SBOM_FILE=$(find ./sboms -name "*.spdx.json" | head -n1)
-          if [ -f "$SBOM_FILE" ]; then
-            echo "SBOM_PATH=$SBOM_FILE" >> $GITHUB_OUTPUT
-            echo "Found SBOM: $SBOM_FILE"
-            echo "SBOM content preview:"
-            head -20 "$SBOM_FILE"
-            
-            # TODO: Add SBOM enrichment here in the future
-            # You can modify the SBOM file before attestation
-            # For example: add custom metadata, vulnerability scan results, etc.
-            
-          else
-            echo "Error: No SBOM file found"
-            echo "Contents of sboms directory:"
-            ls -la ./sboms/
-            exit 1
-          fi
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         id: attest
@@ -97,8 +67,8 @@ jobs:
           push-to-registry: true
 
       - name: Sign and attach SBOM
-        if: steps.generate-sbom.outputs.SBOM_PATH
+        if: steps.publish-image.outputs.SBOM_PATH
         env:
           IMAGE_URI: "ghcr.io/${{ github.repository }}@${{ steps.publish-image.outputs.IMAGE_DIGEST }}"
         run: |
-          cosign attest --yes --predicate ${{ steps.generate-sbom.outputs.SBOM_PATH }} --type spdxjson "${IMAGE_URI}"
+          cosign attest --yes --predicate ${{ steps.publish-image.outputs.SBOM_PATH }} --type spdxjson "${IMAGE_URI}"
