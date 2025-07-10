@@ -49,8 +49,8 @@ jobs:
         run: |
           # Build without SBOM first to avoid permission issues
           ko build --sbom=none --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64 -t ${IMAGE_VERSION} \
-            --image-label org.opencontainers.image.title=grafana-operator \
-            --image-label org.opencontainers.image.description="An operator for Grafana that installs and manages Grafana instances & Dashboards & Datasources through Kubernetes/OpenShift CRs" \
+            --image-label org.opencontainers.image.title=spffie-ambient-auth-service-a \
+            --image-label org.opencontainers.image.description="A test service for Spffie Ambient Auth" \
             --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
             --image-label org.opencontainers.image.revision=${{ github.sha }} \
             --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
