@@ -62,7 +62,7 @@ jobs:
             echo "SBOM_PATH=$SBOM_FILE" >> $GITHUB_OUTPUT
             echo "Found SBOM: $SBOM_FILE"
             echo "SBOM content preview:"
-            head -20 "$SBOM_FILE"
+            cat "$SBOM_FILE"
 
             # TODO: Add SBOM enrichment here in the future
             # You can modify the SBOM file before attestation
