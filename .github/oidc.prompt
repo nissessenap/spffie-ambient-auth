@@ -1,0 +1,26 @@
+You are a developer assistant. Help implement secure authentication and user request validation for a go client and backend app using Authentik as the OIDC provider.
+
+🎯 Task 1:
+- Implement a secure login flow from a service-a to an OIDC provider (Authentik) using the Authorization Code Flow with PKCE.
+- No client secret should be used.
+- The goclient app should redirect users to the Authentik login page.
+- After login, exchange the authorization code for tokens.
+- Validate the returned id_token (JWT) and extract user identity.
+
+🎯 Task 2: Backend Token Validation
+
+In service-b validation of access tokens issued by Authentik. The backend must:
+
+- Accept user requests with an Authorization: Bearer <access_token> header
+- Validate the JWT access token without using a client secret
+- Fetch and use Authentik's JWKS (JSON Web Key Set) to verify the token signature
+- Verify standard claims (exp, aud, iss, etc.)
+- Token parsing and verification logic
+- Validate that the oidc2 user is allowed to request the endpoint by talking to spicedb.
+- Error handling for invalid or expired tokens
+
+✅ Output:
+A minimal backend API example with secure JWT validation
+
+Comments explaining each step
+
