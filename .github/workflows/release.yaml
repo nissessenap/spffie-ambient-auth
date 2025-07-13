@@ -48,7 +48,7 @@ jobs:
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
           # Build and push without SBOM (we'll generate it separately)
-          ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64 -t ${IMAGE_VERSION} \
+          ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64,linux/arm64 -t ${IMAGE_VERSION} \
             --image-label org.opencontainers.image.title=spffie-ambient-auth-service-a \
             --image-label org.opencontainers.image.description="A test service for Spffie Ambient Auth" \
             --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
