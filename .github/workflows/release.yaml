@@ -68,10 +68,18 @@ jobs:
           FIRST=true
           
           for PLATFORM in "linux-amd64" "linux-arm64"; do
+            PLATFORM_VERSION=$(echo "$PLATFORM" | sed 's/-/\//')
             SBOM_FILE=$(find ./sboms -name "*${PLATFORM}.spdx.json" | head -n1)
+            
             if [ -f "$SBOM_FILE" ]; then
-              PLATFORM_VERSION=$(echo "$PLATFORM" | sed 's/-/\//')
-              DIGEST=$(jq -r ".packages[] | select(.versionInfo == \"$PLATFORM_VERSION\" and .primaryPackagePurpose == \"CONTAINER\") | .checksums[0].checksumValue" "$SBOM_FILE")
+              # Extract digest from platform-specific SBOM file
+              # Look for the container package and get its checksum value
+              DIGEST=$(jq -r '.packages[] | select(.primaryPackagePurpose == "CONTAINER") | .checksums[0].checksumValue' "$SBOM_FILE")
+              
+              if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+                echo "Error: Could not find container digest in platform SBOM: $SBOM_FILE"
+                exit 1
+              fi
               
               if [ "$FIRST" = true ]; then
                 FIRST=false
