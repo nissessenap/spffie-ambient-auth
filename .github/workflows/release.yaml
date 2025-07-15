@@ -8,13 +8,15 @@ on:
 permissions: {}
 
 jobs:
-  image:
+  build:
     permissions:
       contents: read
       packages: write
       id-token: write
-      attestations: write
     runs-on: ubuntu-latest
+    outputs:
+      manifest-digest: ${{ steps.publish-image.outputs.MANIFEST_DIGEST }}
+      platform-map: ${{ steps.publish-image.outputs.PLATFORM_MAP }}
     steps:
       - name: Clone repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -35,11 +37,6 @@ jobs:
       - uses: ko-build/setup-ko@d006021bd0c28d1ce33a07e7943d48b079944c8d # v0.9
         with:
           version: v0.18.0
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
-        with:
-          cosign-release: "v2.2.2"
 
       - name: Build and push
         id: publish-image
@@ -93,51 +90,78 @@ jobs:
           PLATFORM_MAP="$PLATFORM_MAP]"
           echo "PLATFORM_MAP=$PLATFORM_MAP" >> $GITHUB_OUTPUT
           
-          # Also set individual outputs for backwards compatibility
-          AMD64_DIGEST=$(echo "$PLATFORM_MAP" | jq -r '.[] | select(.platform == "linux/amd64") | .digest')
-          ARM64_DIGEST=$(echo "$PLATFORM_MAP" | jq -r '.[] | select(.platform == "linux/arm64") | .digest')
-          echo "AMD64_DIGEST=$AMD64_DIGEST" >> $GITHUB_OUTPUT
-          echo "ARM64_DIGEST=$ARM64_DIGEST" >> $GITHUB_OUTPUT
-          
-          # Create digest mapping for attestation
           echo "Platform digest mapping:"
           echo "  Manifest: $MANIFEST_DIGEST"
-          echo "  AMD64:    $AMD64_DIGEST"
-          echo "  ARM64:    $ARM64_DIGEST"
+          echo "$PLATFORM_MAP" | jq -r '.[] | "  \(.platform): \(.digest)"'
           
           # TODO: Add SBOM enrichment here in the future
           # You can modify the SBOM files before attestation
           # For example: add custom metadata, vulnerability scan results, etc.
 
+      - name: Upload SBOMs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sboms
+          path: ./sboms/
+          retention-days: 1
+
+  attest:
+    needs: build
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Download SBOMs
+        uses: actions/download-artifact@v4
+        with:
+          name: sboms
+          path: ./sboms/
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+        with:
+          cosign-release: "v2.2.2"
+
+      - name: Extract platform info
+        id: platform-info
+        env:
+          PLATFORM_MAP: ${{ needs.build.outputs.platform-map }}
+          CURRENT_PLATFORM: ${{ matrix.platform }}
+        run: |
+          PLATFORM_INFO=$(echo "$PLATFORM_MAP" | jq -r ".[] | select(.platform == \"$CURRENT_PLATFORM\")")
+          DIGEST=$(echo "$PLATFORM_INFO" | jq -r '.digest')
+          SBOM=$(echo "$PLATFORM_INFO" | jq -r '.sbom')
+          
+          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT
+          echo "SBOM=$SBOM" >> $GITHUB_OUTPUT
+          
+          echo "Platform: $CURRENT_PLATFORM"
+          echo "Digest: $DIGEST"
+          echo "SBOM: $SBOM"
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        id: attest
         with:
           subject-name: "ghcr.io/${{ github.repository }}"
-          subject-digest: ${{ steps.publish-image.outputs.AMD64_DIGEST }}
+          subject-digest: ${{ steps.platform-info.outputs.DIGEST }}
           push-to-registry: true
 
-      - name: Sign and attach SBOMs
+      - name: Sign and attach SBOM
         env:
           REPO_URI: "ghcr.io/${{ github.repository }}"
-          PLATFORM_MAP: ${{ steps.publish-image.outputs.PLATFORM_MAP }}
         run: |
-          echo "Attesting SBOMs for all platforms..."
-          echo "$PLATFORM_MAP" | jq -c '.[]' | while read -r platform_info; do
-            PLATFORM=$(echo "$platform_info" | jq -r '.platform')
-            DIGEST=$(echo "$platform_info" | jq -r '.digest')
-            SBOM=$(echo "$platform_info" | jq -r '.sbom')
-            
-            echo "Processing SBOM for $PLATFORM..."
-            echo "  Image: ${REPO_URI}@${DIGEST}"
-            echo "  SBOM:  $SBOM"
-            
-            # TODO: Remove this condition when attest-build-provenance supports multiple digests
-            # Currently only attesting AMD64 due to GitHub Actions limitation
-            if [ "$PLATFORM" = "linux/amd64" ]; then
-              echo "  Attesting SBOM (AMD64 only for now)..."
-              cosign attest --yes --predicate "$SBOM" --type spdxjson "${REPO_URI}@${DIGEST}"
-            else
-              echo "  Skipping attestation (waiting for multi-digest support)..."
-            fi
-          done
+          echo "Attesting SBOM for ${{ matrix.platform }}..."
+          echo "  Image: ${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+          echo "  SBOM:  ${{ steps.platform-info.outputs.SBOM }}"
+          
+          cosign attest --yes --predicate "${{ steps.platform-info.outputs.SBOM }}" --type spdxjson \
+            "${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+          
+          echo "Successfully attested SBOM for ${{ matrix.platform }}"
+          echo "To verify: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
