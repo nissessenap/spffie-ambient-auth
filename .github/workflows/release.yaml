@@ -100,7 +100,13 @@ jobs:
           
           echo "Platform digest mapping:"
           echo "  Manifest: $MANIFEST_DIGEST"
-          echo "$PLATFORM_MAP" | jq -r '.[] | "  \(.platform): \(.digest)"'
+          
+          # Debug: Show raw platform map
+          echo "Debug - Raw PLATFORM_MAP:"
+          echo "$PLATFORM_MAP"
+          
+          # Parse and display nicely
+          echo "$PLATFORM_MAP" | jq -r '.[] | "  \(.platform): sha256:\(.digest)"'
           
           # TODO: Add SBOM enrichment here in the future
           # You can modify the SBOM files before attestation
@@ -146,11 +152,14 @@ jobs:
           DIGEST=$(echo "$PLATFORM_INFO" | jq -r '.digest')
           SBOM=$(echo "$PLATFORM_INFO" | jq -r '.sbom')
           
-          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT
+          # Add sha256: prefix for cosign
+          DIGEST_WITH_PREFIX="sha256:$DIGEST"
+          
+          echo "DIGEST=$DIGEST_WITH_PREFIX" >> $GITHUB_OUTPUT
           echo "SBOM=$SBOM" >> $GITHUB_OUTPUT
           
           echo "Platform: $CURRENT_PLATFORM"
-          echo "Digest: $DIGEST"
+          echo "Digest: $DIGEST_WITH_PREFIX"
           echo "SBOM: $SBOM"
 
       - name: Attest build provenance
