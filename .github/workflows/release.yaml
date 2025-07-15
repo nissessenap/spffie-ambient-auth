@@ -66,29 +66,38 @@ jobs:
           # Extract platform-specific digests from SBOM files
           echo "Extracting platform digests from SBOMs..."
           
-          # Find and process AMD64 SBOM
-          AMD64_SBOM=$(find ./sboms -name "*linux-amd64.spdx.json" | head -n1)
-          if [ -f "$AMD64_SBOM" ]; then
-            AMD64_DIGEST=$(jq -r '.packages[] | select(.versionInfo == "linux/amd64" and .primaryPackagePurpose == "CONTAINER") | .checksums[0].checksumValue' "$AMD64_SBOM")
-            echo "AMD64_DIGEST=$AMD64_DIGEST" >> $GITHUB_OUTPUT
-            echo "AMD64_SBOM=$AMD64_SBOM" >> $GITHUB_OUTPUT
-            echo "Found AMD64: $AMD64_DIGEST -> $AMD64_SBOM"
-          else
-            echo "Error: AMD64 SBOM not found"
-            exit 1
-          fi
+          # Create platform mapping as JSON
+          PLATFORM_MAP="["
+          FIRST=true
           
-          # Find and process ARM64 SBOM
-          ARM64_SBOM=$(find ./sboms -name "*linux-arm64.spdx.json" | head -n1)
-          if [ -f "$ARM64_SBOM" ]; then
-            ARM64_DIGEST=$(jq -r '.packages[] | select(.versionInfo == "linux/arm64" and .primaryPackagePurpose == "CONTAINER") | .checksums[0].checksumValue' "$ARM64_SBOM")
-            echo "ARM64_DIGEST=$ARM64_DIGEST" >> $GITHUB_OUTPUT
-            echo "ARM64_SBOM=$ARM64_SBOM" >> $GITHUB_OUTPUT
-            echo "Found ARM64: $ARM64_DIGEST -> $ARM64_SBOM"
-          else
-            echo "Error: ARM64 SBOM not found"
-            exit 1
-          fi
+          for PLATFORM in "linux-amd64" "linux-arm64"; do
+            SBOM_FILE=$(find ./sboms -name "*${PLATFORM}.spdx.json" | head -n1)
+            if [ -f "$SBOM_FILE" ]; then
+              PLATFORM_VERSION=$(echo "$PLATFORM" | sed 's/-/\//')
+              DIGEST=$(jq -r ".packages[] | select(.versionInfo == \"$PLATFORM_VERSION\" and .primaryPackagePurpose == \"CONTAINER\") | .checksums[0].checksumValue" "$SBOM_FILE")
+              
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                PLATFORM_MAP="$PLATFORM_MAP,"
+              fi
+              
+              PLATFORM_MAP="$PLATFORM_MAP{\"platform\":\"$PLATFORM_VERSION\",\"digest\":\"$DIGEST\",\"sbom\":\"$SBOM_FILE\"}"
+              echo "Found $PLATFORM_VERSION: $DIGEST -> $SBOM_FILE"
+            else
+              echo "Error: $PLATFORM SBOM not found"
+              exit 1
+            fi
+          done
+          
+          PLATFORM_MAP="$PLATFORM_MAP]"
+          echo "PLATFORM_MAP=$PLATFORM_MAP" >> $GITHUB_OUTPUT
+          
+          # Also set individual outputs for backwards compatibility
+          AMD64_DIGEST=$(echo "$PLATFORM_MAP" | jq -r '.[] | select(.platform == "linux/amd64") | .digest')
+          ARM64_DIGEST=$(echo "$PLATFORM_MAP" | jq -r '.[] | select(.platform == "linux/arm64") | .digest')
+          echo "AMD64_DIGEST=$AMD64_DIGEST" >> $GITHUB_OUTPUT
+          echo "ARM64_DIGEST=$ARM64_DIGEST" >> $GITHUB_OUTPUT
           
           # Create digest mapping for attestation
           echo "Platform digest mapping:"
@@ -111,23 +120,17 @@ jobs:
       - name: Sign and attach SBOMs
         env:
           REPO_URI: "ghcr.io/${{ github.repository }}"
+          PLATFORM_MAP: ${{ steps.publish-image.outputs.PLATFORM_MAP }}
         run: |
-          # Attest SBOM for AMD64 platform
-          echo "Attesting SBOM for linux/amd64..."
-          echo "  Image: ${REPO_URI}@${{ steps.publish-image.outputs.AMD64_DIGEST }}"
-          echo "  SBOM:  ${{ steps.publish-image.outputs.AMD64_SBOM }}"
-          cosign attest --yes --predicate ${{ steps.publish-image.outputs.AMD64_SBOM }} --type spdxjson \
-            "${REPO_URI}@${{ steps.publish-image.outputs.AMD64_DIGEST }}"
-          
-          # Attest SBOM for ARM64 platform  
-          echo "Attesting SBOM for linux/arm64..."
-          echo "  Image: ${REPO_URI}@${{ steps.publish-image.outputs.ARM64_DIGEST }}"
-          echo "  SBOM:  ${{ steps.publish-image.outputs.ARM64_SBOM }}"
-          cosign attest --yes --predicate ${{ steps.publish-image.outputs.ARM64_SBOM }} --type spdxjson \
-            "${REPO_URI}@${{ steps.publish-image.outputs.ARM64_DIGEST }}"
-          
-          echo "Successfully attested SBOMs for both platforms"
-          echo ""
-          echo "To verify SBOMs:"
-          echo "  AMD64: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.publish-image.outputs.AMD64_DIGEST }}"
-          echo "  ARM64: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.publish-image.outputs.ARM64_DIGEST }}"
+          echo "Attesting SBOMs for all platforms..."
+          echo "$PLATFORM_MAP" | jq -c '.[]' | while read -r platform_info; do
+            PLATFORM=$(echo "$platform_info" | jq -r '.platform')
+            DIGEST=$(echo "$platform_info" | jq -r '.digest')
+            SBOM=$(echo "$platform_info" | jq -r '.sbom')
+            
+            echo "Attesting SBOM for $PLATFORM..."
+            echo "  Image: ${REPO_URI}@${DIGEST}"
+            echo "  SBOM:  $SBOM"
+            
+            cosign attest --yes --predicate "$SBOM" --type spdxjson "${REPO_URI}@${DIGEST}"
+          done
