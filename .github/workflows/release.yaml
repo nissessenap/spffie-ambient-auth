@@ -47,7 +47,10 @@ jobs:
           IMAGE_VERSION: ${{ github.ref_name }}
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
-          # Build and push without SBOM (we'll generate it separately)
+          # Create SBOM directory
+          mkdir -p ./sboms
+          
+          # Build multi-platform with SBOMs
           ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64,linux/arm64 -t ${IMAGE_VERSION} \
             --image-label org.opencontainers.image.title=spffie-ambient-auth-service-a \
             --image-label org.opencontainers.image.description="A test service for Spffie Ambient Auth" \
@@ -56,37 +59,75 @@ jobs:
             --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
             --image-label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 
           
-          # Get the top digest from the image-digest file, until attest-build-provenance supports multiple digests
-          echo "IMAGE_DIGEST=$(cat ./image-digest | cut -d@ -f2 |head -1)" >> $GITHUB_OUTPUT
-          SBOM_FILE=$(find ./sboms -name "*.spdx.json" | head -n1)
-          if [ -f "$SBOM_FILE" ]; then
-            echo "SBOM_PATH=$SBOM_FILE" >> $GITHUB_OUTPUT
-            echo "Found SBOM: $SBOM_FILE"
-            echo "SBOM content preview:"
-            cat "$SBOM_FILE"
-
-            # TODO: Add SBOM enrichment here in the future
-            # You can modify the SBOM file before attestation
-            # For example: add custom metadata, vulnerability scan results, etc.
-
+          # Get the manifest digest
+          MANIFEST_DIGEST=$(cat ./image-digest | cut -d@ -f2)
+          echo "MANIFEST_DIGEST=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
+          
+          # Extract platform-specific digests from SBOM files
+          echo "Extracting platform digests from SBOMs..."
+          
+          # Find and process AMD64 SBOM
+          AMD64_SBOM=$(find ./sboms -name "*linux-amd64.spdx.json" | head -n1)
+          if [ -f "$AMD64_SBOM" ]; then
+            AMD64_DIGEST=$(jq -r '.packages[] | select(.versionInfo == "linux/amd64" and .primaryPackagePurpose == "CONTAINER") | .checksums[0].checksumValue' "$AMD64_SBOM")
+            echo "AMD64_DIGEST=$AMD64_DIGEST" >> $GITHUB_OUTPUT
+            echo "AMD64_SBOM=$AMD64_SBOM" >> $GITHUB_OUTPUT
+            echo "Found AMD64: $AMD64_DIGEST -> $AMD64_SBOM"
           else
-            echo "Error: No SBOM file found"
-            echo "Contents of sboms directory:"
-            ls -la ./sboms/
+            echo "Error: AMD64 SBOM not found"
             exit 1
           fi
+          
+          # Find and process ARM64 SBOM
+          ARM64_SBOM=$(find ./sboms -name "*linux-arm64.spdx.json" | head -n1)
+          if [ -f "$ARM64_SBOM" ]; then
+            ARM64_DIGEST=$(jq -r '.packages[] | select(.versionInfo == "linux/arm64" and .primaryPackagePurpose == "CONTAINER") | .checksums[0].checksumValue' "$ARM64_SBOM")
+            echo "ARM64_DIGEST=$ARM64_DIGEST" >> $GITHUB_OUTPUT
+            echo "ARM64_SBOM=$ARM64_SBOM" >> $GITHUB_OUTPUT
+            echo "Found ARM64: $ARM64_DIGEST -> $ARM64_SBOM"
+          else
+            echo "Error: ARM64 SBOM not found"
+            exit 1
+          fi
+          
+          # Create digest mapping for attestation
+          echo "Platform digest mapping:"
+          echo "  Manifest: $MANIFEST_DIGEST"
+          echo "  AMD64:    $AMD64_DIGEST"
+          echo "  ARM64:    $ARM64_DIGEST"
+          
+          # TODO: Add SBOM enrichment here in the future
+          # You can modify the SBOM files before attestation
+          # For example: add custom metadata, vulnerability scan results, etc.
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         id: attest
         with:
           subject-name: "ghcr.io/${{ github.repository }}"
-          subject-digest: ${{ steps.publish-image.outputs.IMAGE_DIGEST }}
+          subject-digest: ${{ steps.publish-image.outputs.MANIFEST_DIGEST }}
           push-to-registry: true
 
-      - name: Sign and attach SBOM
-        if: steps.publish-image.outputs.SBOM_PATH
+      - name: Sign and attach SBOMs
         env:
-          IMAGE_URI: "ghcr.io/${{ github.repository }}@${{ steps.publish-image.outputs.IMAGE_DIGEST }}"
+          REPO_URI: "ghcr.io/${{ github.repository }}"
         run: |
-          cosign attest --yes --predicate ${{ steps.publish-image.outputs.SBOM_PATH }} --type spdxjson "${IMAGE_URI}"
+          # Attest SBOM for AMD64 platform
+          echo "Attesting SBOM for linux/amd64..."
+          echo "  Image: ${REPO_URI}@${{ steps.publish-image.outputs.AMD64_DIGEST }}"
+          echo "  SBOM:  ${{ steps.publish-image.outputs.AMD64_SBOM }}"
+          cosign attest --yes --predicate ${{ steps.publish-image.outputs.AMD64_SBOM }} --type spdxjson \
+            "${REPO_URI}@${{ steps.publish-image.outputs.AMD64_DIGEST }}"
+          
+          # Attest SBOM for ARM64 platform  
+          echo "Attesting SBOM for linux/arm64..."
+          echo "  Image: ${REPO_URI}@${{ steps.publish-image.outputs.ARM64_DIGEST }}"
+          echo "  SBOM:  ${{ steps.publish-image.outputs.ARM64_SBOM }}"
+          cosign attest --yes --predicate ${{ steps.publish-image.outputs.ARM64_SBOM }} --type spdxjson \
+            "${REPO_URI}@${{ steps.publish-image.outputs.ARM64_DIGEST }}"
+          
+          echo "Successfully attested SBOMs for both platforms"
+          echo ""
+          echo "To verify SBOMs:"
+          echo "  AMD64: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.publish-image.outputs.AMD64_DIGEST }}"
+          echo "  ARM64: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.publish-image.outputs.ARM64_DIGEST }}"
