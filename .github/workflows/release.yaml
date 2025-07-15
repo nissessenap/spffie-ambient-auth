@@ -56,7 +56,8 @@ jobs:
             --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
             --image-label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 
           
-          echo "IMAGE_DIGEST=$(cat ./image-digest | cut -d@ -f2)" >> $GITHUB_OUTPUT
+          # Get the top digest from the image-digest file, until attest-build-provenance supports multiple digests
+          echo "IMAGE_DIGEST=$(cat ./image-digest | cut -d@ -f2 |head -1)" >> $GITHUB_OUTPUT
           SBOM_FILE=$(find ./sboms -name "*.spdx.json" | head -n1)
           if [ -f "$SBOM_FILE" ]; then
             echo "SBOM_PATH=$SBOM_FILE" >> $GITHUB_OUTPUT
