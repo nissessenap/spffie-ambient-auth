@@ -114,7 +114,7 @@ jobs:
         id: attest
         with:
           subject-name: "ghcr.io/${{ github.repository }}"
-          subject-digest: ${{ steps.publish-image.outputs.MANIFEST_DIGEST }}
+          subject-digest: ${{ steps.publish-image.outputs.AMD64_DIGEST }}
           push-to-registry: true
 
       - name: Sign and attach SBOMs
