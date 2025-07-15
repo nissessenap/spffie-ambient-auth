@@ -73,8 +73,8 @@ jobs:
             
             if [ -f "$SBOM_FILE" ]; then
               # Extract digest from platform-specific SBOM file
-              # Look for the container package and get its checksum value
-              DIGEST=$(jq -r '.packages[] | select(.primaryPackagePurpose == "CONTAINER") | .checksums[0].checksumValue' "$SBOM_FILE")
+              # Look for the container package and extract digest from its name field
+              DIGEST=$(jq -r '.packages[] | select(.primaryPackagePurpose == "CONTAINER") | .name | sub("sha256:"; "")' "$SBOM_FILE")
               
               if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
                 echo "Error: Could not find container digest in platform SBOM: $SBOM_FILE"
