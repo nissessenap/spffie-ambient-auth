@@ -58,7 +58,11 @@ jobs:
           
           # Get the manifest digest
           MANIFEST_DIGEST=$(cat ./image-digest | cut -d@ -f2)
-          echo "MANIFEST_DIGEST=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
+          {
+            echo 'MANIFEST_DIGEST<<EOF'
+            echo "$MANIFEST_DIGEST"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
           
           # Extract platform-specific digests from SBOM files
           echo "Extracting platform digests from SBOMs..."
@@ -96,16 +100,14 @@ jobs:
           done
           
           PLATFORM_MAP="$PLATFORM_MAP]"
-          echo "PLATFORM_MAP=$PLATFORM_MAP" >> $GITHUB_OUTPUT
+          {
+            echo 'PLATFORM_MAP<<EOF'
+            echo "$PLATFORM_MAP"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
           
           echo "Platform digest mapping:"
           echo "  Manifest: $MANIFEST_DIGEST"
-          
-          # Debug: Show raw platform map
-          echo "Debug - Raw PLATFORM_MAP:"
-          echo "$PLATFORM_MAP"
-          
-          # Parse and display nicely
           echo "$PLATFORM_MAP" | jq -r '.[] | "  \(.platform): sha256:\(.digest)"'
           
           # TODO: Add SBOM enrichment here in the future
