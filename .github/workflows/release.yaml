@@ -48,7 +48,7 @@ jobs:
           mkdir -p ./sboms
           
           # Build multi-platform with SBOMs
-          ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64,linux/arm64 -t ${IMAGE_VERSION} \
+          ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64,linux/arm64,linux/arm/v7 -t ${IMAGE_VERSION} \
             --image-label org.opencontainers.image.title=spffie-ambient-auth-service-a \
             --image-label org.opencontainers.image.description="A test service for Spffie Ambient Auth" \
             --image-label org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }} \
@@ -67,35 +67,44 @@ jobs:
           # Extract platform-specific digests from SBOM files
           echo "Extracting platform digests from SBOMs..."
           
+          # Find the index SBOM file (contains platform-specific digest information)
+          INDEX_SBOM_FILE=$(find ./sboms -name "*index.spdx.json" | head -n1)
+          if [ ! -f "$INDEX_SBOM_FILE" ]; then
+            echo "Error: Index SBOM file not found"
+            exit 1
+          fi
+          
+          echo "Using index SBOM: $INDEX_SBOM_FILE"
+          
           # Create platform mapping as JSON
           PLATFORM_MAP="["
           FIRST=true
           
-          for PLATFORM in "linux-amd64" "linux-arm64"; do
-            PLATFORM_VERSION=$(echo "$PLATFORM" | sed 's/-/\//')
+          for PLATFORM in "linux-amd64" "linux-arm64" "linux-arm-v7"; do
+            PLATFORM_VERSION=$(echo "$PLATFORM" | sed 's/-/\//g')
             SBOM_FILE=$(find ./sboms -name "*${PLATFORM}.spdx.json" | head -n1)
             
+            # Extract digest from index SBOM for this platform
+            DIGEST=$(jq -r ".packages[] | select(.versionInfo == \"$PLATFORM_VERSION\" and .primaryPackagePurpose == \"CONTAINER\") | .checksums[0].checksumValue" "$INDEX_SBOM_FILE")
+            
+            if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
+              echo "Error: Could not find digest for platform $PLATFORM_VERSION in index SBOM"
+              exit 1
+            fi
+            
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              PLATFORM_MAP="$PLATFORM_MAP,"
+            fi
+            
             if [ -f "$SBOM_FILE" ]; then
-              # Extract digest from platform-specific SBOM file
-              # Look for the container package and extract digest from its name field
-              DIGEST=$(jq -r '.packages[] | select(.primaryPackagePurpose == "CONTAINER") | .name | sub("sha256:"; "")' "$SBOM_FILE")
-              
-              if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
-                echo "Error: Could not find container digest in platform SBOM: $SBOM_FILE"
-                exit 1
-              fi
-              
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                PLATFORM_MAP="$PLATFORM_MAP,"
-              fi
-              
               PLATFORM_MAP="$PLATFORM_MAP{\"platform\":\"$PLATFORM_VERSION\",\"digest\":\"$DIGEST\",\"sbom\":\"$SBOM_FILE\"}"
               echo "Found $PLATFORM_VERSION: $DIGEST -> $SBOM_FILE"
             else
-              echo "Error: $PLATFORM SBOM not found"
-              exit 1
+              echo "Warning: $PLATFORM SBOM not found, but digest available from index"
+              PLATFORM_MAP="$PLATFORM_MAP{\"platform\":\"$PLATFORM_VERSION\",\"digest\":\"$DIGEST\",\"sbom\":null}"
+              echo "Platform $PLATFORM_VERSION: $DIGEST (no SBOM file)"
             fi
           done
           
@@ -131,7 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        platform: [linux/amd64, linux/arm64, linux/arm/v7]
     steps:
       - name: Login to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
@@ -161,17 +170,34 @@ jobs:
           DIGEST=$(echo "$PLATFORM_INFO" | jq -r '.digest')
           SBOM=$(echo "$PLATFORM_INFO" | jq -r '.sbom')
           
+          # Check if we have a valid digest
+          if [ "$DIGEST" = "null" ] || [ -z "$DIGEST" ]; then
+            echo "No digest available for platform $CURRENT_PLATFORM, skipping attestation"
+            echo "SKIP_ATTESTATION=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Check if we have SBOM file for SBOM attestation
+          if [ "$SBOM" = "null" ] || [ -z "$SBOM" ]; then
+            echo "No SBOM file available for platform $CURRENT_PLATFORM, will skip SBOM attestation only"
+            echo "SKIP_SBOM_ATTESTATION=true" >> $GITHUB_OUTPUT
+          else
+            echo "SKIP_SBOM_ATTESTATION=false" >> $GITHUB_OUTPUT
+          fi
+          
           # Add sha256: prefix for cosign
           DIGEST_WITH_PREFIX="sha256:$DIGEST"
           
           echo "DIGEST=$DIGEST_WITH_PREFIX" >> $GITHUB_OUTPUT
           echo "SBOM=$SBOM" >> $GITHUB_OUTPUT
+          echo "SKIP_ATTESTATION=false" >> $GITHUB_OUTPUT
           
           echo "Platform: $CURRENT_PLATFORM"
           echo "Digest: $DIGEST_WITH_PREFIX"
           echo "SBOM: $SBOM"
 
       - name: Attest build provenance
+        if: steps.platform-info.outputs.SKIP_ATTESTATION == 'false'
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-name: "ghcr.io/${{ github.repository }}"
@@ -179,6 +205,7 @@ jobs:
           push-to-registry: true
 
       - name: Sign and attach SBOM
+        if: steps.platform-info.outputs.SKIP_ATTESTATION == 'false' && steps.platform-info.outputs.SKIP_SBOM_ATTESTATION == 'false'
         env:
           REPO_URI: "ghcr.io/${{ github.repository }}"
         run: |
