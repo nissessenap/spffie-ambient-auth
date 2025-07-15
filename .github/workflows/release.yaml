@@ -128,9 +128,16 @@ jobs:
             DIGEST=$(echo "$platform_info" | jq -r '.digest')
             SBOM=$(echo "$platform_info" | jq -r '.sbom')
             
-            echo "Attesting SBOM for $PLATFORM..."
+            echo "Processing SBOM for $PLATFORM..."
             echo "  Image: ${REPO_URI}@${DIGEST}"
             echo "  SBOM:  $SBOM"
             
-            cosign attest --yes --predicate "$SBOM" --type spdxjson "${REPO_URI}@${DIGEST}"
+            # TODO: Remove this condition when attest-build-provenance supports multiple digests
+            # Currently only attesting AMD64 due to GitHub Actions limitation
+            if [ "$PLATFORM" = "linux/amd64" ]; then
+              echo "  Attesting SBOM (AMD64 only for now)..."
+              cosign attest --yes --predicate "$SBOM" --type spdxjson "${REPO_URI}@${DIGEST}"
+            else
+              echo "  Skipping attestation (waiting for multi-digest support)..."
+            fi
           done
