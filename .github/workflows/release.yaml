@@ -44,10 +44,8 @@ jobs:
           IMAGE_VERSION: ${{ github.ref_name }}
           KO_DOCKER_REPO: "ghcr.io/${{ github.repository }}"
         run: |
-          # Create SBOM directory
+          # Create SBOM directory and build
           mkdir -p ./sboms
-          
-          # Build multi-platform with SBOMs
           ko build --sbom=spdx --sbom-dir ./sboms --image-refs ./image-digest service-a/main.go --bare --platform linux/amd64,linux/arm64 -t ${IMAGE_VERSION} \
             --image-label org.opencontainers.image.title=spffie-ambient-auth-service-a \
             --image-label org.opencontainers.image.description="A test service for Spffie Ambient Auth" \
@@ -56,57 +54,30 @@ jobs:
             --image-label org.opencontainers.image.version=${IMAGE_VERSION} \
             --image-label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" 
           
-          # Get the manifest digest
+          # Extract manifest digest
           MANIFEST_DIGEST=$(cat ./image-digest | cut -d@ -f2)
+          
+          # Build platform map using jq to process all SBOM files at once
+          PLATFORM_MAP=$(find ./sboms -name "*.spdx.json" -not -name "*index*" | \
+            jq -Rs 'split("\n") | map(select(length > 0)) | map(
+              . as $file | 
+              ($file | split("/")[-1] | split(".")[0] | split("-") | join("/")) as $platform |
+              (load($file) | .packages[] | select(.primaryPackagePurpose == "CONTAINER") | .name | sub("sha256:"; "")) as $digest |
+              {platform: $platform, digest: $digest, sbom: $file}
+            )')
+          
+          # Output using heredoc
           {
             echo 'MANIFEST_DIGEST<<EOF'
             echo "$MANIFEST_DIGEST"
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-          
-          # Extract platform-specific digests from SBOM files
-          echo "Extracting platform digests from SBOMs..."
-          
-          # Create platform mapping as JSON
-          PLATFORM_MAP="["
-          FIRST=true
-          
-          for PLATFORM in "linux-amd64" "linux-arm64"; do
-            PLATFORM_VERSION=$(echo "$PLATFORM" | sed 's/-/\//')
-            SBOM_FILE=$(find ./sboms -name "*${PLATFORM}.spdx.json" | head -n1)
-            
-            if [ -f "$SBOM_FILE" ]; then
-              # Extract digest from platform-specific SBOM file
-              # Look for the container package and extract digest from its name field
-              DIGEST=$(jq -r '.packages[] | select(.primaryPackagePurpose == "CONTAINER") | .name | sub("sha256:"; "")' "$SBOM_FILE")
-              
-              if [ -z "$DIGEST" ] || [ "$DIGEST" = "null" ]; then
-                echo "Error: Could not find container digest in platform SBOM: $SBOM_FILE"
-                exit 1
-              fi
-              
-              if [ "$FIRST" = true ]; then
-                FIRST=false
-              else
-                PLATFORM_MAP="$PLATFORM_MAP,"
-              fi
-              
-              PLATFORM_MAP="$PLATFORM_MAP{\"platform\":\"$PLATFORM_VERSION\",\"digest\":\"$DIGEST\",\"sbom\":\"$SBOM_FILE\"}"
-              echo "Found $PLATFORM_VERSION: $DIGEST -> $SBOM_FILE"
-            else
-              echo "Error: $PLATFORM SBOM not found"
-              exit 1
-            fi
-          done
-          
-          PLATFORM_MAP="$PLATFORM_MAP]"
-          {
+            echo 'EOF'
             echo 'PLATFORM_MAP<<EOF'
             echo "$PLATFORM_MAP"
-            echo EOF
+            echo 'EOF'
           } >> "$GITHUB_OUTPUT"
           
-          echo "Platform digest mapping:"
+          # Display summary
+          echo "Build Summary:"
           echo "  Manifest: $MANIFEST_DIGEST"
           echo "$PLATFORM_MAP" | jq -r '.[] | "  \(.platform): sha256:\(.digest)"'
           
