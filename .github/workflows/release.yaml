@@ -13,9 +13,8 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
     runs-on: ubuntu-latest
-    outputs:
-      platform-map: ${{ steps.publish-image.outputs.PLATFORM_MAP }}
     steps:
       - name: Clone repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -84,80 +83,45 @@ jobs:
           # You can modify the SBOM files before attestation
           # For example: add custom metadata, vulnerability scan results, etc.
 
-      - name: Upload SBOMs as artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: sboms
-          path: ./sboms/
-          retention-days: 1
-
-  attest:
-    needs: build
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        platform: [linux/amd64, linux/arm64]
-    steps:
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download SBOMs
-        uses: actions/download-artifact@v4
-        with:
-          name: sboms
-          path: ./sboms/
-
       - name: Install cosign
         uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
         with:
           cosign-release: "v2.2.2"
 
-      - name: Extract platform info
-        id: platform-info
-        env:
-          PLATFORM_MAP: ${{ needs.build.outputs.platform-map }}
-          CURRENT_PLATFORM: ${{ matrix.platform }}
-        run: |
-          PLATFORM_INFO=$(echo "$PLATFORM_MAP" | jq -r ".[] | select(.platform == \"$CURRENT_PLATFORM\")")
-          DIGEST=$(echo "$PLATFORM_INFO" | jq -r '.digest')
-          SBOM=$(echo "$PLATFORM_INFO" | jq -r '.sbom')
-          
-          # Add sha256: prefix for cosign
-          DIGEST_WITH_PREFIX="sha256:$DIGEST"
-          
-          echo "DIGEST=$DIGEST_WITH_PREFIX" >> $GITHUB_OUTPUT
-          echo "SBOM=$SBOM" >> $GITHUB_OUTPUT
-          
-          echo "Platform: $CURRENT_PLATFORM"
-          echo "Digest: $DIGEST_WITH_PREFIX"
-          echo "SBOM: $SBOM"
-
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-name: "ghcr.io/${{ github.repository }}"
-          subject-digest: ${{ steps.platform-info.outputs.DIGEST }}
+          subject-digest: "sha256:${{ steps.publish-image.outputs.MANIFEST_DIGEST }}"
           push-to-registry: true
 
       - name: Sign and attach SBOM
         env:
           REPO_URI: "ghcr.io/${{ github.repository }}"
+          PLATFORM_MAP: ${{ steps.publish-image.outputs.PLATFORM_MAP }}
         run: |
-          echo "Attesting SBOM for ${{ matrix.platform }}..."
-          echo "  Image: ${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
-          echo "  SBOM:  ${{ steps.platform-info.outputs.SBOM }}"
+          echo "Attesting SBOMs for each platform..."
           
-          cosign attest --yes --predicate "${{ steps.platform-info.outputs.SBOM }}" --type spdxjson \
-            "${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+          # Loop through each platform and attest its SBOM
+          echo "$PLATFORM_MAP" | jq -c '.[]' | while read platform_info; do
+            PLATFORM=$(echo "$platform_info" | jq -r '.platform')
+            DIGEST=$(echo "$platform_info" | jq -r '.digest')
+            SBOM=$(echo "$platform_info" | jq -r '.sbom')
+            
+            # Add sha256: prefix for cosign
+            DIGEST_WITH_PREFIX="sha256:$DIGEST"
+            
+            echo "Attesting SBOM for $PLATFORM..."
+            echo "  Image: ${REPO_URI}@${DIGEST_WITH_PREFIX}"
+            echo "  SBOM:  $SBOM"
+            
+            cosign attest --yes --predicate "$SBOM" --type spdxjson \
+              "${REPO_URI}@${DIGEST_WITH_PREFIX}"
+            
+            echo "Successfully attested SBOM for $PLATFORM"
+            echo "To verify: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${DIGEST_WITH_PREFIX}"
+            echo ""
+          done
           
-          echo "Successfully attested SBOM for ${{ matrix.platform }}"
-          echo "To verify: cosign download attestation --predicate-type https://spdx.dev/Document ${REPO_URI}@${{ steps.platform-info.outputs.DIGEST }}"
+          echo "All platform-specific SBOM attestations completed!"
+          echo "To verify with tag: gh attestation verify --owner ${{ github.repository_owner }} oci://${REPO_URI}:${{ github.ref_name }}"
